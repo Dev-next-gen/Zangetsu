@@ -1,7 +1,24 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/hive_key.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 
 import '../mode/content_mode.dart';
+
+/// The box key for one subscribed show.
+///
+/// Through [hiveKey] for the same reason `my_list` and `watch_history` are:
+/// the key carries a source's show url, some sources hand out urls with a
+/// multi-kilobyte `?data={...}` blob, and Hive writes a String key's length
+/// into a single byte — past 255 bytes the length wraps and the box file is
+/// unreadable from that frame on, so startup quarantines it and reopens it
+/// empty. Hive's own guard is an `assert` (stripped from release builds) and
+/// counts characters where the file counts bytes, so a non-Latin url slips
+/// past it even in debug.
+///
+/// Anything that fits comes back untouched, so rows already on disk keep the
+/// key they have.
+String subscriptionKey(String sourceId, String url) =>
+    hiveKey('$sourceId|$url');
 
 /// A subscribed show — we re-check its source for new episodes or chapters
 /// (CloudStream-style). [lastCount] is the count seen at the last check; a
@@ -30,7 +47,7 @@ class Subscription {
   final ContentMode mode;
 
   /// Stable key for the box (one entry per source+show).
-  String get key => '$sourceId|$url';
+  String get key => subscriptionKey(sourceId, url);
 
   Subscription copyWith({int? lastCount}) => Subscription(
     sourceId: sourceId,
@@ -91,18 +108,19 @@ class SubscriptionStore {
       .toList();
 
   bool contains(String sourceId, String url) =>
-      _box.containsKey('$sourceId|$url');
+      _box.containsKey(subscriptionKey(sourceId, url));
 
   Future<void> add(Subscription sub) => _box.put(sub.key, sub.toMap());
 
   Future<void> remove(String sourceId, String url) =>
-      _box.delete('$sourceId|$url');
+      _box.delete(subscriptionKey(sourceId, url));
 
   /// Persist a fresh episode count after a check.
   Future<void> setCount(String sourceId, String url, int count) async {
-    final raw = _box.get('$sourceId|$url');
+    final key = subscriptionKey(sourceId, url);
+    final raw = _box.get(key);
     if (raw is Map) {
-      await _box.put('$sourceId|$url', Subscription.fromMap(raw).copyWith(lastCount: count).toMap());
+      await _box.put(key, Subscription.fromMap(raw).copyWith(lastCount: count).toMap());
     }
   }
 }
