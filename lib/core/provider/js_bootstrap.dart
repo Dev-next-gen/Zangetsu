@@ -256,18 +256,25 @@ globalThis.unpackJs = function(source) {
   var close = s.indexOf(".split('|'),0,{}))");
   if (open === -1 || close <= open) return s;
   var body = s.slice(open + 3, close);
-  body = body.replace(/\\'/g, "'");
-  var comma = body.indexOf("',");
-  if (comma === -1) return s;
-  var payload = body.slice(0, comma);
+  // The payload is a single-quoted literal, so the quotes the script itself
+  // contains arrive escaped. Splitting on `',` after unescaping the whole body
+  // ended the payload at one of those, and the radix, the word list and the
+  // rest of the script were then read out of the payload's middle.
+  var end = 0;
+  while (end < body.length && body.charAt(end) !== "'") {
+    end += (body.charAt(end) === '\\') ? 2 : 1;
+  }
+  if (body.charAt(end + 1) !== ',') return s;
+  var payload = body.slice(0, end).replace(/\\'/g, "'");
+  var tail = body.slice(end + 2);
   // The words are numbered in the base the packer passed as `a` — often 36
   // (the `c.toString(a)` variant), not always 62.
-  var radix = parseInt(body.slice(comma + 2), 10);
+  var radix = parseInt(tail, 10);
   if (!(radix >= 2 && radix <= 62)) radix = 62;
-  var dictStart = body.indexOf("'", comma + 2);
-  var dictEnd = body.lastIndexOf("'");
+  var dictStart = tail.indexOf("'");
+  var dictEnd = tail.lastIndexOf("'");
   if (dictStart === -1 || dictEnd <= dictStart) return s;
-  var dict = body.slice(dictStart + 1, dictEnd).split('|');
+  var dict = tail.slice(dictStart + 1, dictEnd).split('|');
   function unbase(t){ var a=0; for (var i=0;i<t.length;i++){ var c=t.charCodeAt(i); var d = c<=57 ? c-48 : c>=97 ? c-87 : c-29; if (d >= radix) return -1; a = a*radix + d; } return a; }
   return payload.replace(/[0-9A-Za-z]+/g, function(k){ var i=unbase(k); return (i>=0 && i<dict.length && dict[i]!=='') ? dict[i] : k; });
 };

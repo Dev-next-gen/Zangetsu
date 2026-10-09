@@ -77,17 +77,21 @@ globalThis.unpackJs = function (source) {
   const open = s.indexOf("}('");
   const close = s.indexOf(".split('|'),0,{}))");
   if (open === -1 || close <= open) return s;
-  let body = s.slice(open + 3, close);
-  body = body.replace(/\\'/g, "'");
-  const comma = body.indexOf("',");
-  if (comma === -1) return s;
-  const payload = body.slice(0, comma);
-  let radix = parseInt(body.slice(comma + 2), 10);
+  const body = s.slice(open + 3, close);
+  // Same escaped-quote handling as kJsBootstrap — see the comment there.
+  let end = 0;
+  while (end < body.length && body.charAt(end) !== "'") {
+    end += body.charAt(end) === '\\' ? 2 : 1;
+  }
+  if (body.charAt(end + 1) !== ',') return s;
+  const payload = body.slice(0, end).replace(/\\'/g, "'");
+  const tail = body.slice(end + 2);
+  let radix = parseInt(tail, 10);
   if (!(radix >= 2 && radix <= 62)) radix = 62;
-  const dictStart = body.indexOf("'", comma + 2);
-  const dictEnd = body.lastIndexOf("'");
+  const dictStart = tail.indexOf("'");
+  const dictEnd = tail.lastIndexOf("'");
   if (dictStart === -1 || dictEnd <= dictStart) return s;
-  const dict = body.slice(dictStart + 1, dictEnd).split('|');
+  const dict = tail.slice(dictStart + 1, dictEnd).split('|');
   const unbase = (t) => {
     let a = 0;
     for (const c of t) {
