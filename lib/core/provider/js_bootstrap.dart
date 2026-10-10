@@ -256,10 +256,16 @@ globalThis.unpackJs = function(source) {
   var close = s.indexOf(".split('|'),0,{}))");
   if (open === -1 || close <= open) return s;
   var body = s.slice(open + 3, close);
-  body = body.replace(/\\'/g, "'");
-  var comma = body.indexOf("',");
+  // The payload is a single-quoted literal, so its own quotes arrive escaped.
+  // Unescaping the body first ended the payload at the first `\',` it carried
+  // and sliced the word list out of the middle of the script.
+  var comma = -1;
+  for (var i = 0; i + 1 < body.length; i++) {
+    if (body.charAt(i) === '\\') { i += 1; continue; }
+    if (body.charAt(i) === "'" && body.charAt(i + 1) === ',') { comma = i; break; }
+  }
   if (comma === -1) return s;
-  var payload = body.slice(0, comma);
+  var payload = body.slice(0, comma).replace(/\\'/g, "'");
   // The words are numbered in the base the packer passed as `a` — often 36
   // (the `c.toString(a)` variant), not always 62.
   var radix = parseInt(body.slice(comma + 2), 10);

@@ -98,3 +98,12 @@ test('kJsBootstrap unpackJs leaves an unpacked page alone', () => {
   ].join('\n');
   assert.equal(app.unpackJs(page), page);
 });
+
+// Same reason for the payload: a page's own strings are quoted, so they reach
+// unpackJs escaped, and one of them followed by a comma used to end it early.
+test('kJsBootstrap unpackJs decodes a payload whose strings are quoted', () => {
+  const packed = "eval(function(p,a,c,k,e,d){e=function(c){return(c<a?'':e(parseInt(c/a)))+((c=c%a)>35?String.fromCharCode(c+29):c.toString(36))};while(c--)if(k[c])p=p.replace(new RegExp('\\\\b'+e(c)+'\\\\b','g'),k[c]);return p}('0(\\'1\\').2({\\'3\\':\\'4://5.6/7.8\\',\\'9\\':\\'8\\'});',62,10,'jwplayer|vplayer|setup|file|https|host|example|video|mp4|type'.split('|'),0,{}))";
+  assert.equal(
+    app.unpackJs(packed),
+    "jwplayer('vplayer').setup({'file':'https://host.example/video.mp4','type':'mp4'});");
+});

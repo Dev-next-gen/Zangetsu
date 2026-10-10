@@ -35,7 +35,9 @@ function pack(src, radix) {
     ? (n) => n.toString(radix)
     : (n) => (n < radix ? '' : enc(Math.floor(n / radix))) +
         ((n = n % radix) > 35 ? String.fromCharCode(n + 29) : n.toString(36));
-  const payload = src.replace(/\b\w+\b/g, (w) => enc(words.indexOf(w)));
+  // A single-quoted literal: unescaped, the payload would not parse.
+  const payload = src.replace(/\b\w+\b/g, (w) => enc(words.indexOf(w)))
+    .replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const fn = radix <= 36
     ? "function(p,a,c,k,e,d){while(c--)if(k[c])p=p.replace(new RegExp('\\\\b'+c.toString(a)+'\\\\b','g'),k[c]);return p}"
     : "function(p,a,c,k,e,d){e=function(c){return(c<a?'':e(parseInt(c/a)))+((c=c%a)>35?String.fromCharCode(c+29):c.toString(36))};while(c--)if(k[c])p=p.replace(new RegExp('\\\\b'+e(c)+'\\\\b','g'),k[c]);return p}";
@@ -51,8 +53,10 @@ function evaluated(packed) {
 }
 
 const names = Array.from({ length: 70 }, (_, i) => 'v' + String.fromCharCode(97 + (i % 26)) + i);
+// Quoted player options, so the payload carries escaped quotes.
 const script = 'var ' + names.join('=null;var ') +
-  '=null;player.src("https://host.example/video.mp4")';
+  "=null;jwplayer('vplayer').setup({'file':'https://host.example/video.mp4','type':'mp4'});" +
+  'player.src("https://host.example/video.mp4")';
 
 for (const radix of [10, 36, 62]) {
   test(`unpackJs decodes a script packed in base ${radix}`, () => {

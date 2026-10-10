@@ -77,11 +77,16 @@ globalThis.unpackJs = function (source) {
   const open = s.indexOf("}('");
   const close = s.indexOf(".split('|'),0,{}))");
   if (open === -1 || close <= open) return s;
-  let body = s.slice(open + 3, close);
-  body = body.replace(/\\'/g, "'");
-  const comma = body.indexOf("',");
+  const body = s.slice(open + 3, close);
+  // Payload quotes arrive escaped, so its closing quote is found before any
+  // unescaping (see kJsBootstrap).
+  let comma = -1;
+  for (let i = 0; i + 1 < body.length; i++) {
+    if (body.charAt(i) === '\\') { i += 1; continue; }
+    if (body.charAt(i) === "'" && body.charAt(i + 1) === ',') { comma = i; break; }
+  }
   if (comma === -1) return s;
-  const payload = body.slice(0, comma);
+  const payload = body.slice(0, comma).replace(/\\'/g, "'");
   let radix = parseInt(body.slice(comma + 2), 10);
   if (!(radix >= 2 && radix <= 62)) radix = 62;
   const dictStart = body.indexOf("'", comma + 2);
