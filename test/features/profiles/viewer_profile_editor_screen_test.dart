@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_it/get_it.dart';
 import 'package:watch_app/core/profiles/viewer_profile.dart';
+import 'package:watch_app/core/supabase/auth_user.dart';
+import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/profiles/viewer_profile_editor_screen.dart';
 
 Widget _profileEditorHost(
@@ -171,12 +175,125 @@ void main() {
     expect(store.updatedAvatar, 4);
     expect(store.updatedIsKids, isTrue);
   });
+
+  testWidgets('renaming Home updates the sign-in account name', (tester) async {
+    final store = _RecordingProfileStore();
+    final auth = _RecordingAuthCubit();
+    GetIt.instance.registerSingleton<AuthCubit>(auth);
+    addTearDown(() async {
+      await GetIt.instance.unregister<AuthCubit>();
+      await auth.close();
+    });
+    await tester.pumpWidget(_profileStoreEditorHost(store));
+    await tester.tap(find.text('Open editor'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Evening');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(auth.renamedTo, 'Evening');
+    expect(store.renamedTo, 'Evening');
+  });
+
+  testWidgets('renaming another viewer leaves the account name alone', (
+    tester,
+  ) async {
+    final store = _RecordingProfileStore();
+    final auth = _RecordingAuthCubit();
+    GetIt.instance.registerSingleton<AuthCubit>(auth);
+    addTearDown(() async {
+      await GetIt.instance.unregister<AuthCubit>();
+      await auth.close();
+    });
+    await tester.pumpWidget(
+      _profileStoreEditorHost(
+        store,
+        editingProfile: const ViewerProfile(id: 'guest', name: 'Guest'),
+      ),
+    );
+    await tester.tap(find.text('Open editor'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Family');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(auth.renamedTo, isNull);
+    expect(store.renamedTo, 'Family');
+  });
+
+  testWidgets('failed account rename leaves Home name unchanged', (
+    tester,
+  ) async {
+    final store = _RecordingProfileStore();
+    final auth = _RecordingAuthCubit()..succeeds = false;
+    GetIt.instance.registerSingleton<AuthCubit>(auth);
+    addTearDown(() async {
+      await GetIt.instance.unregister<AuthCubit>();
+      await auth.close();
+    });
+    await tester.pumpWidget(_profileStoreEditorHost(store));
+    await tester.tap(find.text('Open editor'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Evening');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(auth.renamedTo, 'Evening');
+    expect(store.renamedTo, isNull);
+    expect(find.text('Could not update account name'), findsOneWidget);
+  });
+
+  testWidgets('failed Home rename restores the account name', (tester) async {
+    final store = _RecordingProfileStore()..renameSucceeds = false;
+    final auth = _RecordingAuthCubit();
+    GetIt.instance.registerSingleton<AuthCubit>(auth);
+    addTearDown(() async {
+      await GetIt.instance.unregister<AuthCubit>();
+      await auth.close();
+    });
+    await tester.pumpWidget(_profileStoreEditorHost(store));
+    await tester.tap(find.text('Open editor'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Evening');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(auth.renameCalls, ['Evening', 'Home']);
+    expect(store.renameCalls, ['Evening', 'Home']);
+    expect(find.text('Could not update profile name'), findsOneWidget);
+  });
+}
+
+class _RecordingAuthCubit extends Cubit<AuthState> implements AuthCubit {
+  _RecordingAuthCubit()
+    : super(
+        const AuthState(
+          status: AuthStatus.authenticated,
+          user: AuthUser(id: 'user', name: 'Home', email: 'user@example.com'),
+        ),
+      );
+
+  String? renamedTo;
+  final renameCalls = <String>[];
+  bool succeeds = true;
+
+  @override
+  Future<bool> updateName(String name) async {
+    renamedTo = name;
+    renameCalls.add(name);
+    return succeeds;
+  }
+
+  @override
+  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _RecordingProfileStore extends ViewerProfileStore {
   List<ViewerProfile> visibleProfiles = [];
   bool synced = false;
   String? renamedTo;
+  final renameCalls = <String>[];
+  bool renameSucceeds = true;
   int? updatedAvatar;
   bool? updatedIsKids;
   String? updatedPhotoUrl;
@@ -188,7 +305,8 @@ class _RecordingProfileStore extends ViewerProfileStore {
   @override
   Future<bool> rename(String profileId, String name) async {
     renamedTo = name;
-    return true;
+    renameCalls.add(name);
+    return renameSucceeds;
   }
 
   @override

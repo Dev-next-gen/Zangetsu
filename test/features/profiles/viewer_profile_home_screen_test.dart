@@ -32,9 +32,12 @@ void main() {
 
     expect(find.text('Active profile'), findsOneWidget);
     expect(find.text('Home'), findsWidgets);
-    expect(find.text('Switch profile'), findsOneWidget);
-    expect(find.text('Manage profiles'), findsOneWidget);
-    expect(find.byTooltip('Edit profile'), findsOneWidget);
+    expect(find.text('Profiles'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('profile-home-edit-profiles')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Edit profile'), findsNothing);
     expect(find.byTooltip('App settings'), findsOneWidget);
   });
 
@@ -49,24 +52,11 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('edit action opens the full-page editor', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: ViewerProfileHomeScreen()));
-    await tester.tap(find.byTooltip('Edit profile'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(AlertDialog), findsNothing);
-    expect(find.text('Edit profile'), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(profiles.activeProfile.name, 'Home');
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
-
-  testWidgets('Manage profiles opens the existing profile manager', (
+  testWidgets('Profiles edit opens the existing profile manager', (
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: ViewerProfileHomeScreen()));
-    await tester.tap(find.text('Manage profiles'));
+    await tester.tap(find.byKey(const ValueKey('profile-home-edit-profiles')));
     await tester.pumpAndSettle();
 
     expect(

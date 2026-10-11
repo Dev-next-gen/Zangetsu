@@ -235,9 +235,11 @@ class ViewerProfileStore {
           profile,
     ];
     await _saveLocal(_loadedOwner ?? _owner);
-    await _saveRemote(_profiles.firstWhere((p) => p.id == profileId));
+    final synced = await _saveRemote(
+      _profiles.firstWhere((p) => p.id == profileId),
+    );
     _refreshActive(profileId);
-    return true;
+    return synced;
   }
 
   Future<bool> update(

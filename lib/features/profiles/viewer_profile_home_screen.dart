@@ -9,7 +9,6 @@ import '../../core/ui/settings_widgets.dart';
 import '../auth/auth_cubit.dart';
 import '../settings/settings_screen.dart';
 import '../../l10n/l10n.dart';
-import 'viewer_profile_editor_screen.dart';
 import 'viewer_profiles_screen.dart';
 
 class ViewerProfileHomeScreen extends StatelessWidget {
@@ -33,12 +32,6 @@ class ViewerProfileHomeScreen extends StatelessWidget {
       MaterialPageRoute<void>(builder: (_) => const ViewerProfilesScreen()),
     );
   }
-
-  Future<void> _editActive(BuildContext context) => openViewerProfileEditor(
-    context,
-    _profiles,
-    profile: _profiles.activeProfile,
-  );
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -71,7 +64,19 @@ class ViewerProfileHomeScreen extends StatelessWidget {
                     avatarSize,
                   ),
                   const SizedBox(height: 26),
-                  Text('Switch profile', style: AppText.headline),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Profiles', style: AppText.headline),
+                      ),
+                      TextButton.icon(
+                        key: const ValueKey('profile-home-edit-profiles'),
+                        onPressed: () => _openManager(context),
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('Edit'),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 14),
                   Wrap(
                     spacing: 20,
@@ -79,17 +84,6 @@ class ViewerProfileHomeScreen extends StatelessWidget {
                     children: [
                       for (final profile in _profiles.profiles)
                         _profileChoice(profile, avatarSize - 18),
-                    ],
-                  ),
-                  const SizedBox(height: 28),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.manage_accounts_rounded,
-                        title: 'Manage profiles',
-                        subtitle: 'Add, edit, or remove profiles',
-                        onTap: () => _openManager(context),
-                      ),
                     ],
                   ),
                 ],
@@ -163,12 +157,6 @@ class ViewerProfileHomeScreen extends StatelessWidget {
                 ],
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          IconButton.filledTonal(
-            tooltip: 'Edit profile',
-            onPressed: () => _editActive(context),
-            icon: const Icon(Icons.edit_outlined),
           ),
         ],
       ),

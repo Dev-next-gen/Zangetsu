@@ -14,6 +14,7 @@ import '../../core/supabase/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../auth/auth_cubit.dart';
 
 Future<void> openViewerProfileEditor(
   BuildContext context,
@@ -47,7 +48,39 @@ Future<void> openViewerProfileEditor(
       }
     }
   } else {
-    await profiles.rename(profile.id, result.name);
+    final auth = sl.isRegistered<AuthCubit>() ? sl<AuthCubit>() : null;
+    final syncAccountName =
+        profile.isDefault &&
+        result.name != profile.name &&
+        auth != null &&
+        auth.state.isLoggedIn;
+    final oldAccountName = auth?.state.displayName;
+    if (syncAccountName && !await auth.updateName(result.name)) {
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('Could not update account name')),
+        );
+      }
+      return;
+    }
+    final renamed = await profiles.rename(profile.id, result.name);
+    if (!renamed && syncAccountName) {
+      await profiles.rename(profile.id, profile.name);
+      final accountRestored =
+          oldAccountName != null && await auth.updateName(oldAccountName);
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text(
+              accountRestored
+                  ? 'Could not update profile name'
+                  : 'Could not restore account name; check your connection',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     final synced = await profiles.update(
       profile.id,
       avatar: result.avatar,

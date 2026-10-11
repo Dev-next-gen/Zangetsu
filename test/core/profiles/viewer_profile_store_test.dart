@@ -292,6 +292,19 @@ void main() {
     expect(cloudStore.activeProfile.photoUrl, 'https://cdn.example/new.jpg');
   });
 
+  test('reports a profile rename that did not reach the cloud', () async {
+    final cloudStore = ViewerProfileStore(
+      remote: _FailingUpsertProfileRemote(),
+      currentUserId: () => 'test-user',
+    );
+    await cloudStore.loadForUser();
+
+    final synced = await cloudStore.rename(kDefaultProfileId, 'Evening');
+
+    expect(synced, isFalse);
+    expect(cloudStore.activeProfile.name, 'Evening');
+  });
+
   test('old rows without a photo read as icon-only', () {
     final hive = ViewerProfile.fromJson({'id': 'x', 'name': 'X'});
     expect(hive.photoUrl, isNull);
