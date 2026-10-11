@@ -53,10 +53,15 @@ Future<void> openViewerProfileEditor(
       avatar: result.avatar,
       isKids: result.isKids,
       photoUrl: result.photoUrl,
+      clearPhotoUrl: result.photoUrl == null,
     );
     if (synced &&
         profile.photoUrl != null &&
-        profile.photoUrl != result.photoUrl) {
+        profile.photoUrl != result.photoUrl &&
+        !profiles.profiles.any(
+          (other) =>
+              other.id != profile.id && other.photoUrl == profile.photoUrl,
+        )) {
       final token =
           sl<SupabaseService>().client.auth.currentSession?.accessToken;
       if (token != null) {
@@ -369,7 +374,10 @@ class _ViewerProfileEditorScreenState extends State<ViewerProfileEditorScreen> {
                     IconButton.filledTonal(
                       key: ValueKey('profile-editor-avatar-$i'),
                       tooltip: 'Avatar ${i + 1}',
-                      onPressed: () => setState(() => _avatar = i),
+                      onPressed: () => setState(() {
+                        _avatar = i;
+                        _photoUrl = null;
+                      }),
                       style: IconButton.styleFrom(
                         backgroundColor: _avatar == i
                             ? AppColors.accentSoft

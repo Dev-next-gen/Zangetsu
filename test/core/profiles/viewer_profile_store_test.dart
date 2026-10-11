@@ -250,6 +250,32 @@ void main() {
     );
   });
 
+  test('clears a profile photo only when explicitly requested', () async {
+    final created = await store.create(
+      'Pic',
+      photoUrl: 'https://cdn.example/a.jpg',
+    );
+
+    await store.update(created!.id, isKids: true);
+    expect(
+      store.profiles.firstWhere((profile) => profile.id == created.id).photoUrl,
+      'https://cdn.example/a.jpg',
+    );
+
+    await store.update(created.id, avatar: 4, clearPhotoUrl: true);
+
+    expect(
+      store.profiles.firstWhere((profile) => profile.id == created.id).photoUrl,
+      isNull,
+    );
+    final again = ViewerProfileStore();
+    await again.loadForUser(displayName: 'Account');
+    expect(
+      again.profiles.firstWhere((profile) => profile.id == created.id).photoUrl,
+      isNull,
+    );
+  });
+
   test('does not confirm a photo update when cloud sync fails', () async {
     final cloudStore = ViewerProfileStore(
       remote: _FailingUpsertProfileRemote(),

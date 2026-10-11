@@ -4,33 +4,45 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/profiles/viewer_profile.dart';
 import 'package:watch_app/features/profiles/viewer_profile_editor_screen.dart';
 
-Widget _profileEditorHost(ValueChanged<ProfileEditorResult?> onResult) =>
-    MaterialApp(
-      home: Builder(
-        builder: (context) => Scaffold(
-          body: TextButton(
-            onPressed: () {
-              Navigator.of(context)
-                  .push<ProfileEditorResult>(
-                    MaterialPageRoute<ProfileEditorResult>(
-                      builder: (_) =>
-                          const ViewerProfileEditorScreen(profile: profile),
-                    ),
-                  )
-                  .then(onResult);
-            },
-            child: const Text('Open editor'),
-          ),
-        ),
-      ),
-    );
-
-Widget _profileStoreEditorHost(_RecordingProfileStore store) => MaterialApp(
+Widget _profileEditorHost(
+  ValueChanged<ProfileEditorResult?> onResult, {
+  ViewerProfile editingProfile = profile,
+}) => MaterialApp(
   home: Builder(
     builder: (context) => Scaffold(
       body: TextButton(
-        onPressed: () =>
-            openViewerProfileEditor(context, store, profile: profile),
+        onPressed: () {
+          Navigator.of(context)
+              .push<ProfileEditorResult>(
+                MaterialPageRoute<ProfileEditorResult>(
+                  builder: (_) =>
+                      ViewerProfileEditorScreen(profile: editingProfile),
+                ),
+              )
+              .then(onResult);
+        },
+        child: const Text('Open editor'),
+      ),
+    ),
+  ),
+);
+
+Widget _profileStoreEditorHost(
+  ViewerProfileStore store, {
+  ViewerProfile editingProfile = profile,
+  ValueChanged<Future<void>>? onOpened,
+}) => MaterialApp(
+  home: Builder(
+    builder: (context) => Scaffold(
+      body: TextButton(
+        onPressed: () {
+          final future = openViewerProfileEditor(
+            context,
+            store,
+            profile: editingProfile,
+          );
+          onOpened?.call(future);
+        },
         child: const Text('Open editor'),
       ),
     ),
@@ -69,6 +81,49 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(result, isNull);
+  });
+
+  testWidgets('choosing a built-in avatar replaces a deleted photo', (
+    tester,
+  ) async {
+    final profiles = _RecordingProfileStore();
+    const photoProfile = ViewerProfile(
+      id: 'photo-profile',
+      name: 'Photo profile',
+      photoUrl: 'https://cdn.example/deleted.jpg',
+    );
+    profiles.visibleProfiles = [
+      photoProfile,
+      const ViewerProfile(
+        id: 'shared-photo-profile',
+        name: 'Shared photo profile',
+        photoUrl: 'https://cdn.example/deleted.jpg',
+      ),
+    ];
+    profiles.synced = true;
+    Future<void>? editorFinished;
+    await tester.pumpWidget(
+      _profileStoreEditorHost(
+        profiles,
+        editingProfile: photoProfile,
+        onOpened: (future) => editorFinished = future,
+      ),
+    );
+    await tester.tap(find.text('Open editor'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const ValueKey('profile-editor-avatar-4')));
+    await tester.pump();
+
+    expect(find.byType(Image), findsNothing);
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await editorFinished!;
+
+    expect(profiles.updatedAvatar, 4);
+    expect(profiles.updatedPhotoUrl, isNull);
+    expect(profiles.clearedPhotoUrl, isTrue);
   });
 
   testWidgets('photo picker keeps a sharp bounded source', (tester) async {
@@ -119,9 +174,16 @@ void main() {
 }
 
 class _RecordingProfileStore extends ViewerProfileStore {
+  List<ViewerProfile> visibleProfiles = [];
+  bool synced = false;
   String? renamedTo;
   int? updatedAvatar;
   bool? updatedIsKids;
+  String? updatedPhotoUrl;
+  bool? clearedPhotoUrl;
+
+  @override
+  List<ViewerProfile> get profiles => visibleProfiles;
 
   @override
   Future<bool> rename(String profileId, String name) async {
@@ -135,9 +197,12 @@ class _RecordingProfileStore extends ViewerProfileStore {
     int? avatar,
     bool? isKids,
     String? photoUrl,
+    bool clearPhotoUrl = false,
   }) async {
     updatedAvatar = avatar;
     updatedIsKids = isKids;
-    return true;
+    updatedPhotoUrl = photoUrl;
+    clearedPhotoUrl = clearPhotoUrl;
+    return synced;
   }
 }

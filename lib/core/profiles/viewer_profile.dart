@@ -47,12 +47,13 @@ class ViewerProfile {
     int? avatar,
     bool? isKids,
     String? photoUrl,
+    bool clearPhotoUrl = false,
   }) => ViewerProfile(
     id: id,
     name: name ?? this.name,
     avatar: avatar ?? this.avatar,
     isKids: isKids ?? this.isKids,
-    photoUrl: photoUrl ?? this.photoUrl,
+    photoUrl: clearPhotoUrl ? null : photoUrl ?? this.photoUrl,
   );
 }
 
@@ -244,6 +245,7 @@ class ViewerProfileStore {
     int? avatar,
     bool? isKids,
     String? photoUrl,
+    bool clearPhotoUrl = false,
   }) async {
     final index = _profiles.indexWhere((p) => p.id == profileId);
     if (index < 0) return false;
@@ -251,6 +253,7 @@ class ViewerProfileStore {
       avatar: avatar?.clamp(0, 11).toInt(),
       isKids: isKids,
       photoUrl: photoUrl,
+      clearPhotoUrl: clearPhotoUrl,
     );
     final activePolicyChanged =
         activeId == profileId && _profiles[index].isKids != profile.isKids;
