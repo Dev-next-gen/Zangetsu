@@ -8,6 +8,7 @@ import 'banner_actions.dart';
 import 'featured_carousel.dart' show heroHeightFor;
 import 'featured_hero.dart' show HeroMeta;
 import 'image_fade.dart';
+import 'mobile_hero_art.dart';
 import 'native_cover_provider.dart';
 
 /// Full-bleed Home banner with centered title art and one details action.
@@ -226,7 +227,7 @@ class _FeaturedBannerEdgeState extends State<FeaturedBannerEdge> {
   }
 
   Widget _artwork(MediaItem item) {
-    final url = item.banner ?? item.cover;
+    final url = mobileHeroArt(item.cover, item.banner);
     final provider = url == null || url.isEmpty
         ? null
         : nativeCoverProvider(url, item.coverHeaders);

@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/zmode/season_chain.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/ui/poster_card.dart';
+import '../../core/ui/mobile_hero_art.dart';
 import '../../core/metadata/synopsis.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/zmode/metadata_filters.dart';
@@ -2078,10 +2079,13 @@ class _DetailViewState extends State<_DetailView>
               ? context.l10n.continueEpisode(episodeNum)
               : context.l10n.play);
 
-    // Cover / backdrop — the wide banner when Z Mode supplied one, else the
-    // regular poster cover, exactly as before [MediaDetail.banner] existed.
+    // Tall phone hero: prefer TMDB's portrait art; other sources stay as-is.
     final coverUrl =
-        detail.banner ?? item.banner ?? detail.cover ?? item.cover ?? '';
+        mobileHeroArt(
+          detail.cover ?? item.cover,
+          detail.banner ?? item.banner,
+        ) ??
+        '';
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = coverUrl.isNotEmpty;
 

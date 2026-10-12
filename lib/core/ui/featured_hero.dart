@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import 'image_fade.dart';
+import 'mobile_hero_art.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 import '../di/injector.dart';
@@ -111,10 +112,8 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     _loadLogo();
   }
 
-  /// The hero's own art: the wide banner when the item has one (Z Mode),
-  /// else the regular poster cover — same as every hero before [MediaItem.banner]
-  /// existed.
-  static String? _art(MediaItem item) => item.banner ?? item.cover;
+  /// Tall phone artwork uses TMDB's portrait poster when available.
+  static String? _art(MediaItem item) => mobileHeroArt(item.cover, item.banner);
 
   @override
   void didUpdateWidget(FeaturedHero old) {
