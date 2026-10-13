@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -8,6 +11,10 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/profiles/profile_avatar_uploader.dart';
+import '../../core/profiles/viewer_profile.dart';
+import '../../core/profiles/viewer_profile_avatar.dart';
+import '../../core/supabase/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/buttons.dart';
@@ -342,25 +349,145 @@ class _SignupScreenState extends State<SignupScreen> {
 // Profile (logged-in)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class ProfileAccountSection extends StatelessWidget {
+class ProfileAccountSection extends StatefulWidget {
   const ProfileAccountSection({super.key});
 
+  @override
+  State<ProfileAccountSection> createState() => _ProfileAccountSectionState();
+}
+
+class _ProfileAccountSectionState extends State<ProfileAccountSection> {
+  bool _avatarUploading = false;
+
   Future<void> _pickAvatar(BuildContext context) async {
-    final x = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      // Avatars render at ~40–96px, so 256px is still 2–3× the display size —
-      // keeps the Appwrite bucket tiny (~15–30 KB/pic) with no visible quality loss.
-      maxWidth: 256,
-      maxHeight: 256,
-      imageQuality: 80,
+    final pickGif = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_outlined),
+              title: const Text('Photo from gallery'),
+              onTap: () => Navigator.of(context).pop(false),
+            ),
+            ListTile(
+              leading: const Icon(Icons.movie_filter_outlined),
+              title: const Text('Animated GIF file'),
+              onTap: () => Navigator.of(context).pop(true),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
-    if (x != null && context.mounted) {
-      await context.read<AuthCubit>().updateAvatar(x.path);
+    if (pickGif == null || !mounted) return;
+
+    late final Uint8List bytes;
+    if (pickGif) {
+      try {
+        final file = await FilePicker.pickFile(
+          type: FileType.custom,
+          allowedExtensions: const ['gif'],
+        );
+        if (file == null || !mounted) return;
+        if (await file.length() > ProfileAvatarUploader.maxGifSourceBytes) {
+          if (context.mounted) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'This GIF is too large to optimize safely. Try a smaller file.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+        if (!mounted) return;
+        bytes = await file.readAsBytes();
+      } catch (_) {
+        if (context.mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            const SnackBar(content: Text('Could not read that GIF file.')),
+          );
+        }
+        return;
+      }
+    } else {
+      final x = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: ProfileAvatarUploader.maxAvatarDimension.toDouble(),
+        maxHeight: ProfileAvatarUploader.maxAvatarDimension.toDouble(),
+        imageQuality: 100,
+      );
+      if (x == null || !context.mounted) return;
+      bytes = await x.readAsBytes();
+    }
+
+    if (!context.mounted) return;
+    await _uploadAccountAvatar(context, bytes);
+  }
+
+  Future<void> _uploadAccountAvatar(
+    BuildContext context,
+    Uint8List bytes,
+  ) async {
+    if (!context.mounted) return;
+    final profiles = sl<ViewerProfileStore>();
+    final profile = profiles.profiles.firstWhere(
+      (profile) => profile.id == kDefaultProfileId,
+    );
+    final token = sl<SupabaseService>().client.auth.currentSession?.accessToken;
+    if (token == null) {
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(context.l10n.couldntUpdatePhoto)));
+      return;
+    }
+
+    setState(() => _avatarUploading = true);
+    final uploader = ProfileAvatarUploader(sl<Dio>());
+    String? uploadedUrl;
+    var savedLocally = false;
+    try {
+      uploadedUrl = await uploader.upload(bytes: bytes, token: token);
+      if (uploadedUrl == null) throw StateError('Avatar upload failed');
+
+      final synced = await profiles.update(
+        profile.id,
+        photoUrl: uploadedUrl,
+        clearPhotoUrl: false,
+      );
+      savedLocally = profiles.profiles.any(
+        (item) => item.id == profile.id && item.photoUrl == uploadedUrl,
+      );
+      if (!savedLocally) throw StateError('Profile photo was not saved');
+
+      if (synced &&
+          profile.photoUrl != null &&
+          profile.photoUrl != uploadedUrl &&
+          !profiles.profiles.any(
+            (other) =>
+                other.id != profile.id && other.photoUrl == profile.photoUrl,
+          )) {
+        await uploader.delete(url: profile.photoUrl!, token: token);
+      }
+    } catch (_) {
+      if (uploadedUrl != null && !savedLocally) {
+        await uploader.delete(url: uploadedUrl, token: token);
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text(context.l10n.couldntUpdatePhoto)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _avatarUploading = false);
     }
   }
 
-  /// Rename dialog → AuthCubit.updateName (writes display_name to the profile
-  /// + auth metadata). No-op if unchanged/blank; a snackbar surfaces failure.
+  /// Keep the sign-in account name and default viewer-profile name in sync.
   Future<void> _editName(BuildContext context, String current) async {
     final ctrl = TextEditingController(text: current);
     final name = await showDialog<String>(
@@ -388,14 +515,46 @@ class ProfileAccountSection extends StatelessWidget {
         ],
       ),
     );
-    if (name == null || name.isEmpty || name == current || !context.mounted) {
+    if (name == null || name.isEmpty || !context.mounted) {
       return;
     }
+    final auth = context.read<AuthCubit>();
+    final profiles = sl<ViewerProfileStore>();
+    final defaultProfile = profiles.profiles.firstWhere(
+      (profile) => profile.id == kDefaultProfileId,
+    );
+    final updateAccount = auth.state.displayName != name;
+    final updateProfile = defaultProfile.name != name;
+    if (!updateAccount && !updateProfile) return;
+
     final messenger = ScaffoldMessenger.of(context);
-    final ok = await context.read<AuthCubit>().updateName(name);
-    if (!ok && context.mounted) {
+    final oldAccountName = auth.state.displayName;
+    if (updateAccount && !await auth.updateName(name)) {
+      if (!context.mounted) return;
       messenger.showSnackBar(
         SnackBar(content: Text(context.l10n.couldnTUpdateYourName)),
+      );
+      return;
+    }
+    if (!updateProfile || await profiles.rename(defaultProfile.id, name)) {
+      return;
+    }
+
+    final profileRestored = await profiles.rename(
+      defaultProfile.id,
+      defaultProfile.name,
+    );
+    final accountRestored =
+        !updateAccount || await auth.updateName(oldAccountName);
+    if (context.mounted) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            profileRestored && accountRestored
+                ? context.l10n.couldnTUpdateYourName
+                : 'Could not restore both names. Check your connection.',
+          ),
+        ),
       );
     }
   }
@@ -464,21 +623,45 @@ class ProfileAccountSection extends StatelessWidget {
         );
       }
 
-      final avatar = CircleAvatar(
-        radius: isTv ? 56 : 48,
-        backgroundColor: AppColors.surface2,
-        backgroundImage: state.avatarUrl != null
-            ? CachedNetworkImageProvider(state.avatarUrl!)
-            : null,
-        child: state.avatarUrl == null
-            ? Text(
-                state.displayName.isNotEmpty
-                    ? state.displayName[0].toUpperCase()
-                    : '?',
-                style: AppText.largeTitle,
-              )
-            : null,
-      );
+      Widget accountAvatar() {
+        final radius = isTv ? 56.0 : 48.0;
+        final profiles = sl.isRegistered<ViewerProfileStore>()
+            ? sl<ViewerProfileStore>()
+            : null;
+        Widget buildAvatar(String? accountPhotoUrl) => CircleAvatar(
+          radius: radius,
+          backgroundColor: AppColors.surface2,
+          backgroundImage: accountPhotoUrl != null
+              ? CachedNetworkImageProvider(accountPhotoUrl)
+              : null,
+          child: accountPhotoUrl == null
+              ? Text(
+                  state.displayName.isNotEmpty
+                      ? state.displayName[0].toUpperCase()
+                      : '?',
+                  style: AppText.largeTitle,
+                )
+              : null,
+        );
+        if (profiles == null) return buildAvatar(state.avatarUrl);
+        return ValueListenableBuilder<int>(
+          valueListenable: profiles.revision,
+          builder: (context, _, _) {
+            final defaultProfile = profiles.profiles.firstWhere(
+              (profile) => profile.id == kDefaultProfileId,
+            );
+            return buildAvatar(
+              profilePhotoForFace(
+                profile: defaultProfile,
+                accountPhotoUrl: state.avatarUrl,
+              ),
+            );
+          },
+        );
+      }
+
+      final avatar = accountAvatar();
+      final avatarBusy = state.busy || _avatarUploading;
       final name = Text(state.displayName, style: AppText.title);
       final logout = isTv
           ? TvFocusable(
@@ -535,7 +718,7 @@ class ProfileAccountSection extends StatelessWidget {
               child: isTv
                   ? avatar
                   : GestureDetector(
-                      onTap: state.busy ? null : () => _pickAvatar(context),
+                      onTap: avatarBusy ? null : () => _pickAvatar(context),
                       child: Stack(
                         alignment: AlignmentDirectional.bottomEnd,
                         children: [
@@ -546,7 +729,7 @@ class ProfileAccountSection extends StatelessWidget {
                               color: AppColors.accent,
                               shape: BoxShape.circle,
                             ),
-                            child: state.busy
+                            child: avatarBusy
                                 ? const SizedBox(
                                     width: 14,
                                     height: 14,
