@@ -29,6 +29,7 @@ test('unpackJs leaves an unpacked page with }( and split() alone', () => {
 // Packs `src` the way the packer does, in base `radix`, with enough distinct
 // words that some of them need two digits. The 36-and-under form is the short
 // `c.toString(a)` one that embed pages commonly serve; 62 needs the long one.
+// The payload's own quotes go out escaped, as the real packer writes them.
 function pack(src, radix) {
   const words = [...new Set(src.match(/\b\w+\b/g))];
   const enc = radix <= 36
@@ -39,8 +40,8 @@ function pack(src, radix) {
   const fn = radix <= 36
     ? "function(p,a,c,k,e,d){while(c--)if(k[c])p=p.replace(new RegExp('\\\\b'+c.toString(a)+'\\\\b','g'),k[c]);return p}"
     : "function(p,a,c,k,e,d){e=function(c){return(c<a?'':e(parseInt(c/a)))+((c=c%a)>35?String.fromCharCode(c+29):c.toString(36))};while(c--)if(k[c])p=p.replace(new RegExp('\\\\b'+e(c)+'\\\\b','g'),k[c]);return p}";
-  return 'eval(' + fn + "('" + payload + "'," + radix + ',' + words.length +
-    ",'" + words.join('|') + "'.split('|'),0,{}))";
+  return 'eval(' + fn + "('" + payload.replace(/'/g, "\\'") + "'," + radix +
+    ',' + words.length + ",'" + words.join('|') + "'.split('|'),0,{}))";
 }
 
 // What the page itself gets when the browser runs the packed script.
@@ -61,3 +62,15 @@ for (const radix of [10, 36, 62]) {
     assert.equal(globalThis.unpackJs(packed), script);
   });
 }
+
+// Before the fix this came back as
+// `8%'});1.9({a:"b/c",…',62,23,'var player=new Clappr…` — no decoded
+// `src:"…"` in it, so mp4upload's extractor reported no source.
+test('unpackJs decodes a packed script whose own source contains quotes', () => {
+  const src = "var player=new Clappr.Player({parentId:'#vplayer',width:'100%'});"
+    + 'player.src({type:"video/mp4",src:"https://www7.mp4upload.com:282/files/abcdef/movie.mp4"});'
+    + 'var HEIGHT=720;';
+  const packed = pack(src, 62);
+  assert.equal(evaluated(packed), src);
+  assert.equal(globalThis.unpackJs(packed), src);
+});

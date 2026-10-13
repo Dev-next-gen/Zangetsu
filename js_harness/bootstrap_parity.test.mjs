@@ -33,6 +33,12 @@ function loadBootstrapHelpers() {
 
 const app = loadBootstrapHelpers();
 
+const PACKED_WITH_QUOTES = "eval(function(p,a,c,k,e,d){e=function(c){return(c<a?'':e(parseInt(c/a)))+((c=c%a)>35?String.fromCharCode(c+29):c.toString(36))};while(c--)if(k[c])p=p.replace(new RegExp('\\\\b'+e(c)+'\\\\b','g'),k[c]);return p}('0 1=2 3.4({5:\\'#6\\',7:\\'8%\\'});1.9({a:\"b/c\",9:\"d://e.f.g:h/i/j/k.c\"});0 l=m;',62,23,'var|player|new|Clappr|Player|parentId|vplayer|width|100|src|type|video|mp4|https|www7|mp4upload|com|282|files|abcdef|movie|HEIGHT|720'.split('|'),0,{}))";
+const PACKED_WITH_QUOTES_SOURCE =
+  "var player=new Clappr.Player({parentId:'#vplayer',width:'100%'});"
+  + 'player.src({type:"video/mp4",src:"https://www7.mp4upload.com:282/files/abcdef/movie.mp4"});'
+  + 'var HEIGHT=720;';
+
 const CASES = {
   htmlText: [
     ['<p>Naruto &#8212; the ninja</p>'],
@@ -59,6 +65,7 @@ const CASES = {
     ['player.src("x")'],
     ["eval(function(p,a,c,k,e,d){}('0 1',2,2,'hello|world'.split('|'),0,{}))"],
     ["eval(function(p,a,c,k,e,d){}('z.10(A)',36,37,'|||||||||||||||||||||||||||||||||||player|src'.split('|'),0,{}))"],
+    [PACKED_WITH_QUOTES],
   ],
   bytesToHex: [[[]], [[0, 1, 2, 255]], [[16, 255]]],
   bytesToB64: [[[]], [[0, 1, 2]], [[104, 105]], [[255, 255, 255, 255]]],
@@ -97,4 +104,10 @@ test('kJsBootstrap unpackJs leaves an unpacked page alone', () => {
     'player.src("https://cdn.example.test/v/abcd1234.mp4");',
   ].join('\n');
   assert.equal(app.unpackJs(page), page);
+});
+
+// Parity stayed green while both sides cut this payload at `'#vplayer',` and
+// decoded its middle, so assert the contract against the real bootstrap.
+test('kJsBootstrap unpackJs decodes a payload with escaped quotes', () => {
+  assert.equal(app.unpackJs(PACKED_WITH_QUOTES), PACKED_WITH_QUOTES_SOURCE);
 });
