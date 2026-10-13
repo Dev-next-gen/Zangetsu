@@ -3018,6 +3018,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get notifyOnNewEpisodes => '新剧集上线时通知我';
 
   @override
+  String get allowNotificationsForAlerts =>
+      'Allow notifications in Android settings to receive alerts.';
+
+  @override
   String get syncStatusScoreProgress => '同步状态、分数和进度';
 
   @override

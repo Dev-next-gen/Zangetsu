@@ -5788,6 +5788,12 @@ abstract class AppLocalizations {
   /// **'Notify on new episodes'**
   String get notifyOnNewEpisodes;
 
+  /// No description provided for @allowNotificationsForAlerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow notifications in Android settings to receive alerts.'**
+  String get allowNotificationsForAlerts;
+
   /// No description provided for @syncStatusScoreProgress.
   ///
   /// In en, this message translates to:

@@ -1296,6 +1296,7 @@
 	"addToMyList": "Add to My List",
 	"notifyOnNewChapters": "Notify on new chapters",
 	"notifyOnNewEpisodes": "Notify on new episodes",
+	"allowNotificationsForAlerts": "Allow notifications in Android settings to receive alerts.",
 	"syncStatusScoreProgress": "Sync status, score & progress",
 	"seasonCount": "{count} Seasons",
 	"@seasonCount": {

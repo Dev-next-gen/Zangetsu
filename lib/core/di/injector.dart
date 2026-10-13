@@ -1027,13 +1027,13 @@ Future<void> initDependencies() async {
   sl<ContentModeCubit>().ensureSourceForMode();
 
   // "New episode" subscriptions (CloudStream-style): the store + the checker
-  // that re-fetches each subscribed show's episodes (works for JS and CS via
-  // SourceRepository.episodes) and notifies on an increase. Triggered on app
+  // that re-fetches subscribed episodes through the catalogue router (so Z
+  // Mode titles resolve too) and notifies on an increase. Triggered on app
   // launch/resume.
   await SubscriptionStore.init();
   sl.registerSingleton<SubscriptionStore>(SubscriptionStore());
   sl.registerSingleton<SubscriptionChecker>(
-    SubscriptionChecker(sl<SourceRepository>(), sl<SubscriptionStore>()),
+    SubscriptionChecker(sl<CatalogueRepository>(), sl<SubscriptionStore>()),
   );
 
   // Developer announcements: read a public JSON feed on launch and surface new

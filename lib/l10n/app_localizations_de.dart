@@ -3128,6 +3128,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get notifyOnNewEpisodes => 'Benachrichtigen Sie uns bei neuen Folgen';
 
   @override
+  String get allowNotificationsForAlerts =>
+      'Allow notifications in Android settings to receive alerts.';
+
+  @override
   String get syncStatusScoreProgress =>
       'Synchronisierungsstatus, Punktzahl und Fortschritt';
 

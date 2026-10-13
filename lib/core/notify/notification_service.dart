@@ -28,6 +28,16 @@ class NotificationService {
       MethodChannel('zangetsu/notifications');
   bool _inited = false;
 
+  Future<bool> get canShowAlerts async {
+    if (!Platform.isAndroid) return false;
+    return await _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.areNotificationsEnabled() ??
+        false;
+  }
+
   Future<void> init() async {
     if (_inited || !(Platform.isAndroid || Platform.isIOS)) return;
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');

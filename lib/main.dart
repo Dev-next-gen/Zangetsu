@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:firebase_core/firebase_core.dart';
@@ -328,11 +329,36 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
 
   bool? _onboardedOverride; // set true once onboarding finishes this session
   bool _handledLaunchTaps = false; // route a notification-tap launch once
+  DateTime? _lastSubscriptionCheck;
 
   /// How stale the local library may be before a launch/resume re-pull. Short
   /// enough that switching devices shows fresh data on open, long enough to
   /// debounce app-switching so the DB isn't hammered.
   static const Duration _syncFreshness = Duration(minutes: 2);
+  static const Duration _subscriptionCheckCooldown = Duration(minutes: 15);
+
+  Future<void> _checkSubscriptions({bool syncCloudStream = false}) async {
+    if (!Platform.isAndroid ||
+        !sl.isRegistered<SubscriptionChecker>() ||
+        !sl.isRegistered<SubscriptionStore>()) {
+      return;
+    }
+    final now = DateTime.now();
+    if (_lastSubscriptionCheck != null &&
+        now.difference(_lastSubscriptionCheck!) < _subscriptionCheckCooldown) {
+      return;
+    }
+    _lastSubscriptionCheck = now;
+    try {
+      if (syncCloudStream) {
+        await CsNotify.sync(sl<SubscriptionStore>().all());
+      }
+      await sl<SubscriptionChecker>().checkAll();
+      await CsNotify.checkNow();
+    } catch (e) {
+      AppLogger.instance.log('[notify] foreground check failed · $e');
+    }
+  }
 
   void _onThemeChanged() {
     if (mounted) {
@@ -419,6 +445,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         unawaited(sl<AuthCubit>().revalidateIfFlagged());
       }
       _syncOnResume();
+      unawaited(_checkSubscriptions());
       // The wallpaper may have changed while we were away. No-op unless
       // Material You is on, and only rebuilds if the colours actually moved.
       ThemeController.refresh();
@@ -536,10 +563,8 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         try {
           await NotificationService.instance.init();
           // Mirror CS subs to native + (re)schedule the background worker, then
-          // run the launch sweep: JS sources here, CS via the native worker.
-          await CsNotify.sync(sl<SubscriptionStore>().all());
-          await sl<SubscriptionChecker>().checkAll();
-          await CsNotify.checkNow();
+          // run the launch/resume sweep: JS sources here, CS via native worker.
+          await _checkSubscriptions(syncCloudStream: true);
         } catch (_) {}
       });
     }

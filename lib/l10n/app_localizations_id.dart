@@ -3121,6 +3121,10 @@ class AppLocalizationsId extends AppLocalizations {
   String get notifyOnNewEpisodes => 'Beri tahu untuk episode baru';
 
   @override
+  String get allowNotificationsForAlerts =>
+      'Allow notifications in Android settings to receive alerts.';
+
+  @override
   String get syncStatusScoreProgress => 'Sinkronkan status, skor & progres';
 
   @override

@@ -3116,6 +3116,10 @@ class AppLocalizationsTr extends AppLocalizations {
   String get notifyOnNewEpisodes => 'Yeni bölümlerde haber ver';
 
   @override
+  String get allowNotificationsForAlerts =>
+      'Allow notifications in Android settings to receive alerts.';
+
+  @override
   String get syncStatusScoreProgress => 'Durum, puan ve ilerlemeyi eşitle';
 
   @override

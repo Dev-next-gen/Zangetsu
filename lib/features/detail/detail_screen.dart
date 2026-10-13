@@ -853,9 +853,11 @@ class _DetailViewState extends State<_DetailView>
       );
       await NotificationService.instance.init(); // ask for permission now
       _snack(
-        reading
-            ? l10n.youllBeNotifiedOfNewChaptersFor(item.title)
-            : l10n.youllBeNotifiedOfNewEpisodesFor(item.title),
+        await NotificationService.instance.canShowAlerts
+            ? reading
+                  ? l10n.youllBeNotifiedOfNewChaptersFor(item.title)
+                  : l10n.youllBeNotifiedOfNewEpisodesFor(item.title)
+            : l10n.allowNotificationsForAlerts,
       );
     }
     // Mirror CS subs to native so the background worker picks up the change.
@@ -2415,7 +2417,8 @@ class _DetailViewState extends State<_DetailView>
                       : context.l10n.addToMyList,
                   onTap: () => _openListSheet(detail),
                 ),
-                if (Platform.isAndroid)
+                if (Platform.isAndroid &&
+                    (_subscribed || (!state.episodesLoading && eps.isNotEmpty)))
                   _IconAction(
                     icon: _subscribed
                         ? Icons.notifications_active_rounded
