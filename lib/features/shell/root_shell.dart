@@ -27,6 +27,7 @@ import '../../l10n/l10n.dart';
 import '../../core/ui/nav_prefs.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
+import '../profiles/viewer_profiles_screen.dart';
 import '../auth/auth_cubit.dart';
 import '../home/cubit/home_cubit.dart';
 import '../home/home_screen.dart';
@@ -810,6 +811,52 @@ class _ProfileDockItem extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  Future<void> _openProfileSwitcher(BuildContext context) async {
+    if (!sl.isRegistered<ViewerProfileStore>()) return;
+    final profiles = sl<ViewerProfileStore>();
+    if (profiles.profiles.length < 2) return;
+
+    final addProfile = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (sheetContext) => _ProfileSwitcherSheet(
+        profiles: profiles,
+        onSelected: (profile) {
+          Navigator.of(sheetContext).pop();
+          unawaited(_switchProfile(context, profiles, profile));
+        },
+        onAddProfile: () => Navigator.of(sheetContext).pop(true),
+      ),
+    );
+    if (addProfile == true && context.mounted) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const ViewerProfilesScreen()),
+      );
+    }
+  }
+
+  Future<void> _switchProfile(
+    BuildContext context,
+    ViewerProfileStore profiles,
+    ViewerProfile profile,
+  ) async {
+    try {
+      await profiles.switchTo(profile.id);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text("Couldn't switch profile. Try again.")),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = selected ? AppColors.accent : AppColors.textSecondary;
@@ -823,8 +870,11 @@ class _ProfileDockItem extends StatelessWidget {
         button: true,
         selected: selected,
         container: true,
+        hint: 'Long-press to switch profiles',
+        onLongPress: () => unawaited(_openProfileSwitcher(context)),
         child: InkWell(
           onTap: onTap,
+          onLongPress: () => unawaited(_openProfileSwitcher(context)),
           borderRadius: BorderRadius.circular(18),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: _FloatingDock._tapMin),
@@ -976,6 +1026,162 @@ class _ProfileDockItem extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileSwitcherSheet extends StatelessWidget {
+  const _ProfileSwitcherSheet({
+    required this.profiles,
+    required this.onSelected,
+    required this.onAddProfile,
+  });
+
+  final ViewerProfileStore profiles;
+  final ValueChanged<ViewerProfile> onSelected;
+  final VoidCallback onAddProfile;
+
+  @override
+  Widget build(BuildContext context) {
+    final choices = profiles.profiles;
+    final activeId = profiles.activeId;
+    final accountPhotoUrl = sl.isRegistered<AuthCubit>()
+        ? sl<AuthCubit>().state.avatarUrl
+        : null;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 2, 14, 8),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+          ),
+          child: Column(
+            key: const ValueKey('profile-switcher-sheet'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: ClipRRect(
+                  key: const ValueKey('profile-switcher-options-card'),
+                  borderRadius: BorderRadius.circular(18),
+                  child: Material(
+                    color: AppColors.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      side: BorderSide(color: AppColors.hairline),
+                    ),
+                    child: ListView(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+                      children: [
+                        for (final profile in choices) ...[
+                          Semantics(
+                            button: true,
+                            selected: profile.id == activeId,
+                            label: profile.name,
+                            child: ListTile(
+                              key: ValueKey(
+                                profile.id == activeId
+                                    ? 'profile-switcher-active'
+                                    : 'profile-switcher-choice-${profile.id}',
+                              ),
+                              selected: profile.id == activeId,
+                              visualDensity: const VisualDensity(vertical: -1),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              onTap: () => onSelected(profile),
+                              leading: Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: viewerProfileAvatarColor(
+                                    profile.avatar,
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: ClipOval(
+                                  child: ProfileAvatarFace(
+                                    profile: profile,
+                                    photoUrl: profilePhotoForFace(
+                                      profile: profile,
+                                      accountPhotoUrl: accountPhotoUrl,
+                                    ),
+                                    iconSize: 17,
+                                    photoDiameter: 38,
+                                  ),
+                                ),
+                              ),
+                              title: Text(profile.name, maxLines: 1),
+                              trailing: profile.id == activeId
+                                  ? Icon(
+                                      Icons.check_circle_rounded,
+                                      color: AppColors.accent,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ],
+                        ListTile(
+                          key: const ValueKey('profile-switcher-add'),
+                          visualDensity: const VisualDensity(vertical: -1),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          leading: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppColors.hairline),
+                            ),
+                            child: Icon(
+                              Icons.add_rounded,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          title: const Text('Add profile'),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: onAddProfile,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                key: const ValueKey('profile-switcher-brand-footer'),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    'assets/icon/logo_mark.png',
+                    width: 18,
+                    height: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Zangetsu',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
