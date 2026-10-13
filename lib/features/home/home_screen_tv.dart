@@ -80,6 +80,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   /// Per-item hero metadata cache (genres + episode count). Mirrors the phone's
   /// _metaCache; futures are stored so carousel rotation never re-fetches.
   final Map<String, Future<HeroMeta?>> _metaCache = {};
+  bool _resuming = false;
 
   /// Stable identities so Anime ↔ Movie/TV swaps reuse the already-built
   /// 10-foot trees (hero + rails) instead of reconstructing them.
@@ -95,66 +96,15 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (isAppleTv) setState(() => _historyLive = true);
-      if (sl.isRegistered<AppMode>() && sl<AppMode>().isTv) {
-        // Dual catalogue keeps ~330 poster images warm — default cap (300) evicts
-        // half the prefetch and cold-load stalls the first swap.
-        PaintingBinding.instance.imageCache.maximumSize = 450;
-      }
       final cubit = context.read<HomeCubit>();
       if (cubit.state.sections == null && !cubit.state.loading) {
         cubit.load();
       }
-      unawaited(_warmStreamingHomeCaches());
-    });
-  }
-
-  /// Prefetch both Anime and Movie/TV metadata home rows in parallel so the
-  /// rail toggle swaps instantly — same effective behaviour as phone once splash
-  /// has finished loading providers.
-  Future<void> _warmStreamingHomeCaches() async {
-    if (!ZModePrefs.enabled || !sl.isRegistered<MetadataRepository>()) {
-      return;
-    }
-    final meta = sl<MetadataRepository>();
-    await Future.wait([
-      meta.ensureHomeCached(ZKind.anime),
-      meta.ensureHomeCached(ZKind.movie),
-    ]);
-    if (!mounted) return;
-    final cubit = context.read<HomeCubit>();
-    cubit.primeStreamKindCacheFromMetadata();
-    cubit.applyMetadataCacheIfEmpty();
-    // Decode poster art for the inactive catalogue while Home is visible so
-    // Anime ↔ Movie/TV is a paint swap, not a cold image load.
-    unawaited(_precacheStreamCatalog(StreamKind.anime));
-    unawaited(_precacheStreamCatalog(StreamKind.movie));
-  }
-
-  Future<void> _precacheStreamCatalog(StreamKind kind) async {
-    final rows = context.read<HomeCubit>().sectionsFor(kind);
-    if (rows == null || !mounted) return;
-    var covers = 0;
-    for (final section in rows) {
-      for (final item in section.items) {
-        if (!mounted) return;
-        final url = item.banner ?? item.cover;
-        if (url == null || url.isEmpty) continue;
-        covers++;
-        try {
-          await precacheImage(
-            CachedNetworkImageProvider(
-              url,
-              cacheManager: AppImageCache.manager,
-              headers: item.coverHeaders,
-            ),
-            context,
-          );
-        } catch (_) {}
-        if (covers % 12 == 0) {
-          await Future<void>.delayed(Duration.zero);
-        }
+      if (ZModePrefs.enabled && sl.isRegistered<MetadataRepository>()) {
+        cubit.primeStreamKindCacheFromMetadata();
+        cubit.applyMetadataCacheIfEmpty();
       }
-    }
+    });
   }
 
   // ── Navigation helpers ────────────────────────────────────────────────────
@@ -221,6 +171,16 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   /// ExoPlayer player at the saved episode (it seeks to the stored position on
   /// load via ResumeStore).
   Future<void> _resume(HistoryEntry e) async {
+    if (_resuming) return;
+    _resuming = true;
+    try {
+      await _resumeOnce(e);
+    } finally {
+      _resuming = false;
+    }
+  }
+
+  Future<void> _resumeOnce(HistoryEntry e) async {
     debugPrint(
       '[tv-home] _resume · sourceId=${e.sourceId} '
       'showUrl=${e.showUrl} episodeId=${e.episodeId}',

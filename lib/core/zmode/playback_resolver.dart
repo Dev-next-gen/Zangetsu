@@ -491,6 +491,7 @@ class PlaybackResolver {
   Stream<ProgressiveResolve> resolveProgressive(
     String zmEpisodeUrl, {
     String category = 'sub',
+    bool stopAfterFirstWave = false,
   }) async* {
     // Read FIRST, before any await — same reason as [_resolve]: a generation
     // taken after one reads whatever an abort already set, so the sweep it
@@ -719,6 +720,8 @@ class PlaybackResolver {
           yield await recordHit(attempt);
         }
       }
+      // TV only finishes work already started; phone keeps collecting later waves.
+      if (stopAfterFirstWave && firstHit != null) break;
     }
 
     final done = firstHit;

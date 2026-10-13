@@ -49,6 +49,7 @@ void main() {
     required SourceMatcher matcher,
     String? preferred,
     Duration? budget,
+    List<({String id, String name})>? candidates,
   }) {
     if (preferred != null) prefs.set(show.kind, preferred);
     final r = PlaybackResolver(
@@ -57,7 +58,8 @@ void main() {
       store: store,
       prefs: prefs,
       health: health,
-      candidates: (_) => [(id: 'src-a', name: 'A'), (id: 'src-b', name: 'B')],
+      candidates: (_) =>
+          candidates ?? [(id: 'src-a', name: 'A'), (id: 'src-b', name: 'B')],
       perSourceBudget: budget,
       scores: scores,
     );
@@ -73,6 +75,51 @@ void main() {
   );
 
   group('resolveProgressive', () {
+    test(
+      'TV stops after the winning wave without starting more sources',
+      () async {
+        final src = _ProgSrc.fastSlow(
+          bSourcesDelay: const Duration(milliseconds: 100),
+        );
+        final r = resolver(
+          sources: src,
+          matcher: matcherFor(src),
+          candidates: [
+            (id: 'src-a', name: 'A'),
+            (id: 'src-b', name: 'B'),
+            (id: 'src-c', name: 'C'),
+            (id: 'src-d', name: 'D'),
+          ],
+        );
+
+        final events = await r
+            .resolveProgressive(ep2, stopAfterFirstWave: true)
+            .toList();
+        expect(events.last.done, isTrue);
+        expect(events.last.streams.length, 5);
+        expect(src.log, isNot(contains('search:src-d')));
+      },
+    );
+
+    test('default keeps later waves for phone playback', () async {
+      final src = _ProgSrc.fastSlow(
+        bSourcesDelay: const Duration(milliseconds: 100),
+      );
+      final r = resolver(
+        sources: src,
+        matcher: matcherFor(src),
+        candidates: [
+          (id: 'src-a', name: 'A'),
+          (id: 'src-b', name: 'B'),
+          (id: 'src-c', name: 'C'),
+          (id: 'src-d', name: 'D'),
+        ],
+      );
+
+      await r.resolveProgressive(ep2).toList();
+      expect(src.log, contains('search:src-d'));
+    });
+
     test('yields first hit before slow source answers', () async {
       // Fake setup mirrors playback_resolver_test.dart's resolver harness:
       // source "fast" answers 2 streams in 50ms, source "slow" answers
@@ -388,6 +435,7 @@ class _ProgSrc implements SourceRepository {
     String category = 'sub',
     String? sourceId,
   }) async {
+    log.add('search:$sourceId');
     if (sourceId == 'src-a') {
       return [
         MediaItem(

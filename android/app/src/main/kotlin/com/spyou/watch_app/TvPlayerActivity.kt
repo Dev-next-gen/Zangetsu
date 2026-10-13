@@ -693,8 +693,8 @@ class TvPlayerActivity : Activity() {
     ).show()
 
     /** Cache the current episode's mirror list for the Server picker. */
-    private fun fetchSources() {
-        val bridge = MainActivity.tvBridge ?: return
+    private fun fetchSources(onReady: (() -> Unit)? = null) {
+        val bridge = MainActivity.tvBridge ?: run { onReady?.invoke(); return }
         bridge.invokeMethod(
             "sourcesFor",
             mapOf("index" to currentIndex, "category" to category),
@@ -702,9 +702,10 @@ class TvPlayerActivity : Activity() {
                 override fun success(result: Any?) {
                     @Suppress("UNCHECKED_CAST")
                     episodeSources = (result as? List<Map<String, Any?>>) ?: emptyList()
+                    onReady?.invoke()
                 }
-                override fun error(code: String, msg: String?, details: Any?) {}
-                override fun notImplemented() {}
+                override fun error(code: String, msg: String?, details: Any?) { onReady?.invoke() }
+                override fun notImplemented() { onReady?.invoke() }
             },
         )
     }
@@ -969,7 +970,9 @@ class TvPlayerActivity : Activity() {
     private fun openQualityMenu() = showMenu(btnQuality) { buildQualityMenu() }
 
     /** Sources — the full resolved stream/mirror list. */
-    private fun openSourcesMenu() = showMenu(btnSources) { buildSourcesMenu() }
+    private fun openSourcesMenu() = fetchSources {
+        if (!isFinishing && !isDestroyed) showMenu(btnSources) { buildSourcesMenu() }
+    }
 
     /** The "Episodes" list — jump to any episode via the same bridge switch. */
     private fun openEpisodes() {

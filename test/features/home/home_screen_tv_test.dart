@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
+import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
@@ -16,6 +18,8 @@ import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
+import 'package:watch_app/core/zmode/zmode_ids.dart';
+import 'package:watch_app/core/zmode/metadata_repository.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
 import 'package:watch_app/features/home/home_screen_tv.dart';
@@ -58,6 +62,39 @@ class _StubSourceRepository implements SourceRepository {
   bool hasSource(String id) => false;
 }
 
+class _BlockingEpisodesRepository extends _StubSourceRepository {
+  _BlockingEpisodesRepository(super._sections);
+
+  final episodesResult = Completer<List<Episode>>();
+  int episodeCalls = 0;
+
+  @override
+  Future<List<Episode>> episodes(
+    String url, {
+    String category = 'sub',
+    String? sourceId,
+  }) {
+    episodeCalls++;
+    return episodesResult.future;
+  }
+}
+
+class _WarmMetadataRepository implements MetadataRepository {
+  final warmed = <ZKind>[];
+
+  @override
+  Future<List<HomeSection>> ensureHomeCached(ZKind kind) async {
+    warmed.add(kind);
+    return const [];
+  }
+
+  @override
+  List<HomeSection>? peekHomeCache(ZKind kind) => null;
+
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
 /// Fake [AuthCubit] with the default (logged-out) state — Continue Watching is
 /// login-gated, so this keeps the rail hidden and avoids needing WatchHistory.
 class _FakeAuthCubit extends Cubit<AuthState> implements AuthCubit {
@@ -66,7 +103,6 @@ class _FakeAuthCubit extends Cubit<AuthState> implements AuthCubit {
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   // Added with the on-demand resolver: SourceMatcher now asks whether a JS
   // provider is loaded before searching it. These fakes are already "loaded".
-  @override
   Future<bool> ensureSourceLoaded(String sourceId) async => true;
 }
 
@@ -188,6 +224,71 @@ void main() {
       if (await dir.exists()) await dir.delete(recursive: true);
     });
     sl.unregister<WatchHistory>();
+  });
+
+  testWidgets('repeated Resume presses fetch episodes only once', (
+    tester,
+  ) async {
+    final repo = _BlockingEpisodesRepository(const []);
+    sl.unregister<CatalogueRepository>();
+    sl.registerSingleton<CatalogueRepository>(repo);
+    late Directory dir;
+    await tester.runAsync(() async {
+      dir = await Directory.systemTemp.createTemp('tv_resume_guard');
+      Hive.init(dir.path);
+      await WatchHistory.init();
+    });
+    final history = WatchHistory(SupabaseService(), () => null);
+    sl.registerSingleton<WatchHistory>(history);
+    await tester.runAsync(
+      () => history.save(
+        HistoryEntry(
+          sourceId: ZmodeIds.sourceId,
+          showId: 'mal:1',
+          showTitle: 'Local Show',
+          showUrl: 'zm://anime/mal:1',
+          category: 'sub',
+          episodeId: 'episode-1',
+          episodeNumber: 1,
+          episodeUrl: 'zm://anime/mal:1/ep/1',
+          position: const Duration(minutes: 1),
+          duration: const Duration(minutes: 24),
+          updatedAt: 1,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_homeApp(cubit));
+    await tester.pumpAndSettle();
+    final resumeCard = tester
+        .widgetList<TvFocusable>(find.byType(TvFocusable))
+        .firstWhere((f) => f.semanticLabel?.startsWith('Local Show,') ?? false);
+    resumeCard.onTap();
+    resumeCard.onTap();
+    await tester.pump();
+    expect(repo.episodeCalls, 1);
+
+    repo.episodesResult.complete(const []);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.runAsync(() async {
+      await Hive.deleteFromDisk();
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    sl.unregister<WatchHistory>();
+  });
+
+  testWidgets('TV Home does not duplicate metadata repository prefetch', (
+    tester,
+  ) async {
+    final metadata = _WarmMetadataRepository();
+    sl.registerSingleton<MetadataRepository>(metadata);
+
+    await tester.pumpWidget(_homeApp(cubit));
+    await tester.pumpAndSettle();
+
+    expect(metadata.warmed, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    sl.unregister<MetadataRepository>();
   });
 
   testWidgets(

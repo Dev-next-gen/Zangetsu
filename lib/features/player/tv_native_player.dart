@@ -33,6 +33,7 @@ import '../../core/torrent/torrent_prefs.dart';
 import '../../core/torrent/torrent_service.dart';
 import '../../core/torrent/torrent_util.dart';
 import 'subtitle_font_service.dart';
+import 'tv_progressive_sources.dart';
 
 /// Launches and services the fully-native TV player (TvPlayerActivity —
 /// real-window ExoPlayer/SurfaceView) instead of the Flutter platform-view
@@ -67,6 +68,7 @@ class TvNativePlayer {
   // Only one native player is on screen at a time, so a plain static context is
   // enough (a new play() overwrites it).
   static Future<List<VideoSource>> Function(String episodeUrl)? _resolve;
+  static TvProgressiveSources? _progressiveSources;
   static List<Episode> _episodes = const [];
   static String _sourceId = '';
   static String _showId = '';
@@ -109,6 +111,7 @@ class TvNativePlayer {
     lastFailure = null;
     lastPlaybackErrorCode = null;
 
+    _stopProgressiveSources();
     _resolve = resolveSources;
     _episodes = await _enrichEpisodes(
       episodes,
@@ -134,6 +137,16 @@ class TvNativePlayer {
       tmdbIsTv: tmdbIsTv,
       imdbId: imdbId,
     );
+    if (sourceId == ZmodeIds.sourceId && sl.isRegistered<PlaybackResolver>()) {
+      final resolver = sl<PlaybackResolver>();
+      _progressiveSources = TvProgressiveSources(
+        (url, cut) => resolver
+            .resolveProgressive(url, category: cut, stopAfterFirstWave: true)
+            .map((event) => event.streams),
+        poll: (url, cut) async =>
+            (await resolver.polledSources(url, category: cut)).sources,
+      );
+    }
     if (!_handlerBound) {
       _ch.setMethodCallHandler(_onNativeCall);
       _handlerBound = true;
@@ -144,12 +157,19 @@ class TvNativePlayer {
     try {
       src = await _resolveSource(ep);
     } catch (_) {
+      _stopProgressiveSources();
       return false;
     }
-    if (src == null) return false;
+    if (src == null) {
+      _stopProgressiveSources();
+      return false;
+    }
     final playUrl = await _playableUrl(src.url);
     debugPrint('[TvNativePlayer] playUrl=$playUrl (src.url=${src.url})');
-    if (playUrl == null) return false; // torrent failed / Wi-Fi-only
+    if (playUrl == null) {
+      _stopProgressiveSources();
+      return false; // torrent failed / Wi-Fi-only
+    }
     final mark = resume.get(sourceId, _showId, ep.id);
 
     // Full subtitle style, computed the SAME way as the Flutter PlatformView TV
@@ -198,7 +218,7 @@ class TvNativePlayer {
       );
     }
 
-    final res = await _ch.invokeMapMethod<String, dynamic>('launch', {
+    final launch = _ch.invokeMapMethod<String, dynamic>('launch', {
       ..._streamPayload(src, mark?.position.inMilliseconds ?? 0),
       'url': playUrl, // torrent → local stream URL; otherwise unchanged
       'title': _showTitle,
@@ -238,6 +258,7 @@ class TvNativePlayer {
       'autoSkipFiller': prefs.autoSkipFiller,
       'fillerFlags': fillerFlags,
     });
+    final res = await launch.whenComplete(_stopProgressiveSources);
 
     debugPrint('[TvNativePlayer] launch returned: $res');
 
@@ -409,9 +430,11 @@ class TvNativePlayer {
         final category = (args['category'] as String?) ?? _category;
         if (index < 0 || index >= _episodes.length) return const <Map>[];
         try {
-          final sources = await _resolve!(
-            tvEpisodeUrl(_episodes[index].url, category),
-          );
+          final url = tvEpisodeUrl(_episodes[index].url, category);
+          final progressive = _progressiveSources;
+          final sources = progressive != null && ZmodeIds.isZ(url)
+              ? await progressive.latest(url, category)
+              : await _resolve!(url);
           return [
             for (var i = 0; i < sources.length; i++)
               {..._srcMap(sources[i]), 'label': _srcLabel(sources[i], i)},
@@ -572,7 +595,11 @@ class TvNativePlayer {
   }) async {
     final cat = category ?? _category;
     try {
-      final sources = await _resolve!(tvEpisodeUrl(ep.url, cat));
+      final url = tvEpisodeUrl(ep.url, cat);
+      final progressive = _progressiveSources;
+      final sources = progressive != null && ZmodeIds.isZ(url)
+          ? await progressive.first(url, cat)
+          : await _resolve!(url);
       final picked = pickDefault(
         sources,
         prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub,
@@ -602,6 +629,12 @@ class TvNativePlayer {
       );
       rethrow;
     }
+  }
+
+  static void _stopProgressiveSources() {
+    final lookup = _progressiveSources;
+    _progressiveSources = null;
+    if (lookup != null) unawaited(lookup.dispose());
   }
 
   /// A URL ExoPlayer can play: a magnet/.torrent is streamed through the shared
