@@ -2947,6 +2947,25 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
+  /// Errors about the things AROUND the video rather than the video itself:
+  /// a missing output device, a failed subtitle track, a filter this mpv
+  /// build wasn't compiled with (dynaudnorm on some Android builds — mpv
+  /// plays on fine without it). None mean the stream is unplayable, and
+  /// cycling sources would not fix any of them.
+  static bool isHarmlessPlaybackError(String message) {
+    const harmless = [
+      'audio device',
+      'audio output',
+      'subtitle',
+      'sub file',
+      'fontconfig',
+      'libass',
+      'ffmpeg-fallback',
+      'dynaudnorm',
+    ];
+    return harmless.any(message.toLowerCase().contains);
+  }
+
   /// Try the next source after the current one fails (dead/DRM/unsupported),
   /// preserving the live position and the audio kind.
   Future<void> _onPlaybackError(String e) async {
@@ -2965,7 +2984,6 @@ class PlayerCubit extends Cubit<PlayerState> {
     // scratch (re-fetch metadata, wipe the cache) and churn native SessionManagers
     // until the app force-closes. mpv recovers on its own once the pieces land.
     if (_activeTorrentId != null) return;
-    final lower = e.toLowerCase();
     // If THIS source is already playing (position advanced), the error is a
     // transient/secondary one (HLS segment blip, failed sub track) — ignore it.
     // Only a source that NEVER started is worth cycling away from.
@@ -2986,16 +3004,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     // isn't there (the iOS Simulator has none), a subtitle track that failed
     // on its own, libass not finding a font. None of those mean the stream is
     // unplayable, and cycling sources would not fix any of them.
-    const harmless = [
-      'audio device',
-      'audio output',
-      'subtitle',
-      'sub file',
-      'fontconfig',
-      'libass',
-      'ffmpeg-fallback',
-    ];
-    if (harmless.any(lower.contains)) return;
+    if (isHarmlessPlaybackError(e)) return;
     final active = state.active;
     if (active != null &&
         player.platform is NativePlayer &&
