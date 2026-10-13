@@ -1965,6 +1965,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get refreshEpisodes => 'Muat ulang episode';
 
   @override
+  String get reverseList => 'Balik urutan daftar';
+
+  @override
   String get seasons => 'Musim';
 
   @override

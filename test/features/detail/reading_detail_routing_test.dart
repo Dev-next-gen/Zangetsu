@@ -323,8 +323,7 @@ class _FakeDownloadManager extends ChangeNotifier implements DownloadManager {
     String? episodeUrl,
     int? malId,
     double? episodeNumber,
-  }) async =>
-      null;
+  }) async => null;
 }
 
 /// Never resolves a trailer — keeps the hero on its static (empty-cover)
@@ -666,6 +665,53 @@ void main() {
 
       expect(find.text('Next 10'), findsOneWidget);
       expect(find.text('4 – 13'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'reversing a partial chapter range preserves chapters and their reader index',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final chapters = List.generate(
+        60,
+        (i) => Episode(
+          id: 'chapter-${i + 1}',
+          title: 'Chapter ${i + 1}',
+          url: '/chapter-${i + 1}',
+          number: (i + 1).toDouble(),
+        ),
+      );
+      final detail = _novelDetail.copyWith(episodes: chapters);
+      sl.registerSingleton<SourceRepository>(_StubSourceRepository(detail));
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DetailScreen(item: _novelItem)),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: 'detail initial layout');
+
+      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'reverse menu layout');
+      await tester.tap(find.text('Reverse list'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'reversed list layout');
+
+      // The selected normal range (chapters 1–50) remains the same set after
+      // reversal, so chapter 50 is first and is still tappable.
+      expect(find.textContaining('Chapter 50'), findsOneWidget);
+      await tester.tap(find.textContaining('Chapter 50'));
+      await tester.pumpAndSettle();
+
+      final reader = tester.widget<NovelReaderScreen>(
+        find.byType(NovelReaderScreen),
+      );
+      expect(reader.startIndex, 49); // original chapter 50, zero-based
     },
   );
 

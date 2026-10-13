@@ -673,6 +673,7 @@
 	"findEpisode": "查找剧集",
 	"refreshChapters": "刷新章节",
 	"refreshEpisodes": "刷新剧集",
+	"reverseList": "反向排列列表",
 	"seasons": "季",
 	"goToEpisode": "转到该集",
 	"episodeNumber": "集数",

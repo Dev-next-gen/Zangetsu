@@ -25,11 +25,36 @@ List<Episode> filterEpisodes(List<Episode> episodes, String query) {
 int episodeRangeCount(int total) => (total / kEpisodeRangeChunk).ceil();
 
 /// Which range chip holds [localIndex] in the filtered list (-1 → 0).
-int episodeRangeIndex(int localIndex) =>
-    localIndex < 0 ? 0 : localIndex ~/ kEpisodeRangeChunk;
+int episodeRangeIndex(int localIndex, {int? total, bool reversed = false}) {
+  if (localIndex < 0) return 0;
+  if (!reversed || total == null) return localIndex ~/ kEpisodeRangeChunk;
+  final firstRangeLength = total % kEpisodeRangeChunk;
+  if (firstRangeLength == 0 || localIndex < firstRangeLength) return 0;
+  return 1 + (localIndex - firstRangeLength) ~/ kEpisodeRangeChunk;
+}
+
+/// Position for a 1-based episode number when the source omits episode
+/// numbers and the row falls back to its list position.
+int episodePositionForNumber(int number, int total, {bool reversed = false}) =>
+    reversed ? total - number : number - 1;
 
 /// Inclusive [start], exclusive [end] slice bounds for [rangeIndex].
-({int start, int end}) episodeRangeSlice(int rangeIndex, int total) {
+({int start, int end}) episodeRangeSlice(
+  int rangeIndex,
+  int total, {
+  bool reversed = false,
+}) {
+  if (reversed) {
+    final remainder = total % kEpisodeRangeChunk;
+    final firstRangeLength = remainder == 0 ? kEpisodeRangeChunk : remainder;
+    final index = rangeIndex.clamp(0, episodeRangeCount(total));
+    final start =
+        (index == 0 ? 0 : firstRangeLength + (index - 1) * kEpisodeRangeChunk)
+            .clamp(0, total);
+    final end = (start + (index == 0 ? firstRangeLength : kEpisodeRangeChunk))
+        .clamp(0, total);
+    return (start: start, end: end);
+  }
   final start = (rangeIndex * kEpisodeRangeChunk).clamp(0, total);
   final end = (start + kEpisodeRangeChunk).clamp(0, total);
   return (start: start, end: end);
@@ -39,11 +64,19 @@ int episodeRangeIndex(int localIndex) =>
 String episodeNumLabel(Episode e, int fallback) =>
     (e.number?.toInt() ?? fallback).toString();
 
-String episodeRangeLabel(List<Episode> episodes, int rangeIndex) {
+String episodeRangeLabel(
+  List<Episode> episodes,
+  int rangeIndex, {
+  bool reversed = false,
+}) {
   final total = episodes.length;
   if (total == 0) return '';
-  final s = (rangeIndex * kEpisodeRangeChunk).clamp(0, total - 1);
-  final e = ((rangeIndex + 1) * kEpisodeRangeChunk - 1).clamp(0, total - 1);
-  return '${episodeNumLabel(episodes[s], s + 1)}'
-      '–${episodeNumLabel(episodes[e], e + 1)}';
+  final safeRangeIndex = rangeIndex.clamp(0, episodeRangeCount(total) - 1);
+  final slice = episodeRangeSlice(safeRangeIndex, total, reversed: reversed);
+  final start = slice.start;
+  final end = slice.end - 1;
+  final fallbackStart = reversed ? total - start : start + 1;
+  final fallbackEnd = reversed ? total - end : end + 1;
+  return '${episodeNumLabel(episodes[start], fallbackStart)}'
+      '–${episodeNumLabel(episodes[end], fallbackEnd)}';
 }

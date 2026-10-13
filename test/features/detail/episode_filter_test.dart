@@ -69,25 +69,56 @@ void main() {
       expect(episodeRangeIndex(50), 1);
     });
 
+    test('reversed range indexes account for the shorter leading range', () {
+      expect(episodeRangeIndex(0, total: 60, reversed: true), 0);
+      expect(episodeRangeIndex(9, total: 60, reversed: true), 0);
+      expect(episodeRangeIndex(10, total: 60, reversed: true), 1);
+      expect(episodeRangeIndex(59, total: 60, reversed: true), 1);
+    });
+
+    test('numberless jump positions follow the displayed order', () {
+      expect(episodePositionForNumber(1, 60, reversed: true), 59);
+      expect(episodePositionForNumber(60, 60, reversed: true), 0);
+      expect(episodePositionForNumber(1, 60), 0);
+    });
+
     test('episodeRangeSlice returns inclusive start, exclusive end', () {
       expect(episodeRangeSlice(0, 60), (start: 0, end: 50));
       expect(episodeRangeSlice(1, 60), (start: 50, end: 60));
       expect(episodeRangeSlice(0, 50), (start: 0, end: 50));
     });
 
+    test('reversed slices mirror normal episode ranges', () {
+      expect(episodeRangeSlice(0, 60, reversed: true), (start: 0, end: 10));
+      expect(episodeRangeSlice(1, 60, reversed: true), (start: 10, end: 60));
+      expect(episodeRangeSlice(0, 110, reversed: true), (start: 0, end: 10));
+      expect(episodeRangeSlice(1, 110, reversed: true), (start: 10, end: 60));
+      expect(episodeRangeSlice(2, 110, reversed: true), (start: 60, end: 110));
+    });
+
     test('episodeRangeLabel uses episode numbers with fallbacks', () {
       final numbered = [
-        for (var i = 1; i <= 60; i++)
-          ep('$i', 'Ep $i', i.toDouble()),
+        for (var i = 1; i <= 60; i++) ep('$i', 'Ep $i', i.toDouble()),
       ];
       expect(episodeRangeLabel(numbered, 0), '1–50');
       expect(episodeRangeLabel(numbered, 1), '51–60');
 
-      final partial = [
-        ep('a', 'First', 51),
-        ep('b', 'Second', null),
-      ];
+      final partial = [ep('a', 'First', 51), ep('b', 'Second', null)];
       expect(episodeRangeLabel(partial, 0), '51–2');
+    });
+
+    test('reversed labels match their slices and numberless row labels', () {
+      final reversedNumbered = [
+        for (var i = 60; i >= 1; i--) ep('$i', 'Ep $i', i.toDouble()),
+      ];
+      expect(episodeRangeLabel(reversedNumbered, 0, reversed: true), '60–51');
+      expect(episodeRangeLabel(reversedNumbered, 1, reversed: true), '50–1');
+
+      final reversedNumberless = [
+        for (var i = 60; i >= 1; i--) ep('$i', 'Ep $i', null),
+      ];
+      expect(episodeRangeLabel(reversedNumberless, 0, reversed: true), '60–51');
+      expect(episodeRangeLabel(reversedNumberless, 1, reversed: true), '50–1');
     });
   });
 }

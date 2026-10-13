@@ -1909,6 +1909,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get refreshEpisodes => 'エピソードを更新する';
 
   @override
+  String get reverseList => 'リストを逆順にする';
+
+  @override
   String get seasons => 'シーズン';
 
   @override

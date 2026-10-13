@@ -86,8 +86,7 @@ class _EpisodesTab extends StatefulWidget {
   /// the reading path: a chapter opens the reader, so there's nothing to pick.
   final void Function(int fullIndex)? onEpisodeMenu;
 
-  /// Force-refresh the list past the 10-min source cache (header ↻ button).
-  /// Null hides the button.
+  /// Force-refresh the list past the 10-min source cache. Null hides the menu item.
   final Future<void> Function()? onRefresh;
 
   /// Per-row download icon → the download sheet for an episode, or a straight
@@ -113,6 +112,7 @@ class _EpisodesTab extends StatefulWidget {
 
 class _EpisodesTabState extends State<_EpisodesTab> {
   bool _grid = false;
+  bool _reverseList = false;
 
   /// Selected scanlation group, or null for "All". Several groups release the
   /// same chapter number, so an unfiltered list legitimately reads 1, 1, 2, 2
@@ -143,10 +143,14 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   int _initialRange() {
     if (!widget.hasAnyMark || widget.seasonEps.isEmpty) return 0;
     final resumeEp = widget.eps[widget.resumeIndex(widget.eps)];
-    // Against the FILTERED list — the range index addresses what's on screen,
-    // and a scanlator filter makes that a different list to seasonEps.
-    final local = _filteredEps.indexOf(resumeEp);
-    return episodeRangeIndex(local);
+    // Against the filtered display order so reversed lists open at the range
+    // containing the saved resume episode.
+    final local = _displayEps.indexOf(resumeEp);
+    return episodeRangeIndex(
+      local,
+      total: _displayEps.length,
+      reversed: _reverseList,
+    );
   }
 
   int get _rangeCount => episodeRangeCount(_filteredEps.length);
@@ -171,6 +175,11 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       for (final e in widget.seasonEps)
         if (e.scanlator?.trim() == want) e,
     ];
+  }
+
+  List<Episode> get _displayEps {
+    final episodes = _filteredEps;
+    return _reverseList ? episodes.reversed.toList(growable: false) : episodes;
   }
 
   /// Reading progress lives in [ReadStore] (page index / scroll permille),
@@ -254,12 +263,18 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     // Match by episode number; fall back to a 1-based position. Searched in
     // the FILTERED list, so jumping while a scanlator is picked lands on that
     // group's chapter rather than a position in the unfiltered run.
-    final eps = _filteredEps;
+    final eps = _displayEps;
     var local = eps.indexWhere((e) => e.number?.toInt() == n);
-    if (local < 0 && n >= 1 && n <= eps.length) local = n - 1;
+    if (local < 0 && n >= 1 && n <= eps.length) {
+      local = episodePositionForNumber(n, eps.length, reversed: _reverseList);
+    }
     if (local < 0) return;
     setState(() {
-      _rangeIndex = episodeRangeIndex(local);
+      _rangeIndex = episodeRangeIndex(
+        local,
+        total: eps.length,
+        reversed: _reverseList,
+      );
       _grid = true; // the grid makes the jumped-to episode easy to spot
       _highlightEpId = eps[local].id;
     });
@@ -280,13 +295,14 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     }
     final store = sl<ResumeStore>();
     final eps = _filteredEps;
+    final displayEps = _displayEps;
     final total = eps.length;
     // A group with fewer chapters than the one before it can leave the range
     // index past the end, so clamp before slicing.
     final maxRange = _rangeCount == 0 ? 0 : _rangeCount - 1;
     final rangeIndex = _rangeIndex.clamp(0, maxRange);
-    final slice = episodeRangeSlice(rangeIndex, total);
-    final visible = eps.sublist(slice.start, slice.end);
+    final slice = episodeRangeSlice(rangeIndex, total, reversed: _reverseList);
+    final visible = displayEps.sublist(slice.start, slice.end);
     final showRanges = _rangeCount > 1;
     final groups = _scanlators;
 
@@ -302,6 +318,14 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             currentSeason: widget.currentSeason,
             onSelectSeason: widget.onSelectSeason,
             onRefresh: widget.onRefresh,
+            reverseList: _reverseList,
+            onToggleReverseList: () => setState(() {
+              _reverseList = !_reverseList;
+              if (_rangeCount > 0) {
+                _rangeIndex = _rangeCount - 1 - _rangeIndex;
+              }
+              _highlightEpId = null;
+            }),
             grid: _grid,
             onToggleView: () => setState(() => _grid = !_grid),
             onJump: showRanges ? _jump : null,
@@ -366,7 +390,8 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             child: _RangeChips(
               count: _rangeCount,
               selected: rangeIndex,
-              labelFor: (i) => episodeRangeLabel(eps, i),
+              labelFor: (i) =>
+                  episodeRangeLabel(displayEps, i, reversed: _reverseList),
               onSelect: (i) => setState(() {
                 _rangeIndex = i;
                 _highlightEpId = null;
@@ -374,9 +399,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             ),
           ),
         if (_grid)
-          _buildGrid(store, visible, slice.start)
+          _buildGrid(store, visible, slice.start, total)
         else
-          _buildList(store, visible, slice.start),
+          _buildList(store, visible, slice.start, total),
         const SliverToBoxAdapter(child: SizedBox(height: 48)),
       ],
     );
@@ -581,14 +606,22 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     showAppToast(context, context.l10n.queuedChapters(chapters.length));
   }
 
-  Widget _buildList(ResumeStore store, List<Episode> visible, int offset) {
+  Widget _buildList(
+    ResumeStore store,
+    List<Episode> visible,
+    int offset,
+    int total,
+  ) {
     return SliverList.builder(
       itemCount: visible.length,
       itemBuilder: (context, i) {
         final ep = visible[i];
         final fullIndex = widget.eps.indexOf(ep);
         final st = _stateFor(store, ep, fullIndex);
-        final epNum = ep.number?.toInt() ?? (offset + i + 1);
+        final fallbackNumber = _reverseList
+            ? total - offset - i
+            : offset + i + 1;
+        final epNum = ep.number?.toInt() ?? fallbackNumber;
         final displayTitle = widget.hasMultipleSeasons
             ? cleanTitle(ep.title)
             : ep.title;
@@ -638,7 +671,12 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     );
   }
 
-  Widget _buildGrid(ResumeStore store, List<Episode> visible, int offset) {
+  Widget _buildGrid(
+    ResumeStore store,
+    List<Episode> visible,
+    int offset,
+    int total,
+  ) {
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
       sliver: SliverGrid.builder(
@@ -653,7 +691,10 @@ class _EpisodesTabState extends State<_EpisodesTab> {
           final ep = visible[i];
           final fullIndex = widget.eps.indexOf(ep);
           final st = _stateFor(store, ep, fullIndex);
-          final epNum = ep.number?.toInt() ?? (offset + i + 1);
+          final fallbackNumber = _reverseList
+              ? total - offset - i
+              : offset + i + 1;
+          final epNum = ep.number?.toInt() ?? fallbackNumber;
           return _EpisodeGridTile(
             number: epNum,
             isWatched: st.watched,
@@ -686,6 +727,8 @@ class _EpisodesHeader extends StatelessWidget {
     required this.currentSeason,
     required this.onSelectSeason,
     this.onRefresh,
+    required this.reverseList,
+    required this.onToggleReverseList,
     required this.grid,
     required this.onToggleView,
     this.onJump,
@@ -698,8 +741,10 @@ class _EpisodesHeader extends StatelessWidget {
   final int currentSeason;
   final ValueChanged<int> onSelectSeason;
 
-  /// Force-refresh the list past the source cache (header ↻); null hides it.
+  /// Force-refresh the list past the source cache; null hides the menu item.
   final Future<void> Function()? onRefresh;
+  final bool reverseList;
+  final VoidCallback onToggleReverseList;
 
   /// Whether the grid view is active (toggles the view icon).
   final bool grid;
@@ -819,24 +864,84 @@ class _EpisodesHeader extends StatelessWidget {
                     : context.l10n.gridView,
               ),
               const SizedBox(width: 8),
-              if (onRefresh != null) ...[
-                _circle(
-                  Icons.refresh_rounded,
-                  () {
-                    onRefresh!();
-                    showAppToast(
-                      context,
-                      isReading
-                          ? context.l10n.refreshingChapters
-                          : context.l10n.refreshingEpisodes,
-                    );
-                  },
-                  semanticLabel: isReading
-                      ? context.l10n.refreshChapters
-                      : context.l10n.refreshEpisodes,
+              PopupMenuButton<_EpisodesHeaderAction>(
+                tooltip: context.l10n.more,
+                icon: const Icon(Icons.more_vert_rounded, size: 20),
+                padding: EdgeInsets.zero,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.surface2,
+                  fixedSize: const Size.square(36),
+                  minimumSize: const Size.square(36),
+                  maximumSize: const Size.square(36),
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: const CircleBorder(),
                 ),
-                const SizedBox(width: 8),
-              ],
+                color: AppColors.surface,
+                surfaceTintColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                onSelected: (action) {
+                  if (action == _EpisodesHeaderAction.reverseList) {
+                    onToggleReverseList();
+                    return;
+                  }
+                  onRefresh?.call();
+                  showAppToast(
+                    context,
+                    isReading
+                        ? context.l10n.refreshingChapters
+                        : context.l10n.refreshingEpisodes,
+                  );
+                },
+                itemBuilder: (context) => [
+                  if (onRefresh != null)
+                    PopupMenuItem(
+                      value: _EpisodesHeaderAction.refresh,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.refresh_rounded, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              isReading
+                                  ? context.l10n.refreshChapters
+                                  : context.l10n.refreshEpisodes,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  PopupMenuItem(
+                    value: _EpisodesHeaderAction.reverseList,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.swap_vert_rounded, size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            context.l10n.reverseList,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: reverseList
+                              ? const Icon(Icons.check_rounded, size: 18)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 8),
               // The ⓘ that used to sit here jumped to the Details tab — which
               // is a tap away in the tab bar directly above it. Two controls,
               // same destination, inches apart.
@@ -847,6 +952,8 @@ class _EpisodesHeader extends StatelessWidget {
     );
   }
 }
+
+enum _EpisodesHeaderAction { refresh, reverseList }
 
 // Dark, rounded-top bottom sheet listing the available seasons with a coral
 // check on the current one. Returns the picked season via Navigator.pop.

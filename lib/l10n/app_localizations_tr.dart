@@ -1965,6 +1965,9 @@ class AppLocalizationsTr extends AppLocalizations {
   String get refreshEpisodes => 'Bölümleri yenile';
 
   @override
+  String get reverseList => 'Listeyi ters çevir';
+
+  @override
   String get seasons => 'Sezonlar';
 
   @override

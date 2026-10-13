@@ -3754,6 +3754,12 @@ abstract class AppLocalizations {
   /// **'Refresh episodes'**
   String get refreshEpisodes;
 
+  /// No description provided for @reverseList.
+  ///
+  /// In en, this message translates to:
+  /// **'Reverse list'**
+  String get reverseList;
+
   /// No description provided for @seasons.
   ///
   /// In en, this message translates to:

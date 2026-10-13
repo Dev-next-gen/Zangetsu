@@ -1966,6 +1966,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get refreshEpisodes => 'Actualizar episodios';
 
   @override
+  String get reverseList => 'Invertir lista';
+
+  @override
   String get seasons => 'Temporadas';
 
   @override

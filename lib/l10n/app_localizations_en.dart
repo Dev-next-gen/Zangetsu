@@ -1951,6 +1951,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refreshEpisodes => 'Refresh episodes';
 
   @override
+  String get reverseList => 'Reverse list';
+
+  @override
   String get seasons => 'Seasons';
 
   @override

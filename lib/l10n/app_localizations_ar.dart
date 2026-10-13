@@ -1966,6 +1966,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get refreshEpisodes => 'تحديث الحلقات';
 
   @override
+  String get reverseList => 'عكس ترتيب القائمة';
+
+  @override
   String get seasons => 'المواسم';
 
   @override

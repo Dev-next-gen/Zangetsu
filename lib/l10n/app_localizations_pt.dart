@@ -1981,6 +1981,9 @@ class AppLocalizationsPt extends AppLocalizations {
   String get refreshEpisodes => 'Atualizar episódios';
 
   @override
+  String get reverseList => 'Inverter lista';
+
+  @override
   String get seasons => 'Temporadas';
 
   @override

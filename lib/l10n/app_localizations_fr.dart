@@ -1972,6 +1972,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get refreshEpisodes => 'Actualiser les épisodes';
 
   @override
+  String get reverseList => 'Inverser la liste';
+
+  @override
   String get seasons => 'Saisons';
 
   @override

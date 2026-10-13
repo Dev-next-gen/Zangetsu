@@ -1897,6 +1897,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get refreshEpisodes => '刷新剧集';
 
   @override
+  String get reverseList => '反向排列列表';
+
+  @override
   String get seasons => '季';
 
   @override
@@ -7148,6 +7151,9 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get refreshEpisodes => '刷新劇集';
+
+  @override
+  String get reverseList => '反向排列清單';
 
   @override
   String get seasons => '季';
