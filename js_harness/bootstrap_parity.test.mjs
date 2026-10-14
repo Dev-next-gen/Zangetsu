@@ -111,3 +111,9 @@ test('kJsBootstrap unpackJs leaves an unpacked page alone', () => {
 test('kJsBootstrap unpackJs decodes a payload with escaped quotes', () => {
   assert.equal(app.unpackJs(PACKED_WITH_QUOTES), PACKED_WITH_QUOTES_SOURCE);
 });
+
+// AllAnime writes its apostrophes as &apos;, and the TV detail screen shows
+// the description without cleaning it again.
+test('kJsBootstrap htmlText decodes &apos;', () => {
+  assert.equal(app.htmlText('At Gomah&apos;s side'), "At Gomah's side");
+});

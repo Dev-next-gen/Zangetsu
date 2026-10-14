@@ -49,6 +49,7 @@ globalThis.htmlText = function (html) {
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
     .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
 };

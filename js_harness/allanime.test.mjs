@@ -98,6 +98,24 @@ test('getDetail without opts defaults to sub and builds /sub/ URLs', async () =>
   }
 });
 
+// AllAnime spells its apostrophes &apos; (Dragon Ball Daima's synopsis, as the
+// API returns it), and the TV detail screen shows the description as is.
+test('getDetail decodes &apos; in the description', async () => {
+  const fakeShow = {
+    _id: 'ju2pgynxn9o9DZvse', name: 'Dragon Ball Daima', englishName: null, thumbnail: null,
+    description: 'At Gomah&apos;s side is Degesu, the younger brother of Higashi no Kaioshin.<br>\n<br>\n[Written by MAL Rewrite]',
+    availableEpisodes: { sub: 1, dub: 0 }, availableEpisodesDetail: { sub: ['1'], dub: [] }
+  };
+  const realFetch = globalThis.__fetch;
+  globalThis.__fetch = async () => ({ ok: true, status: 200, headers: {}, url: '', body: JSON.stringify({ data: { show: fakeShow } }) });
+  try {
+    const detail = JSON.parse(await callProvider('allanime', 'getDetail', ['ju2pgynxn9o9DZvse']));
+    assert.equal(detail.description, "At Gomah's side is Degesu, the younger brother of Higashi no Kaioshin. [Written by MAL Rewrite]");
+  } finally {
+    globalThis.__fetch = realFetch;
+  }
+});
+
 live('getHome returns named sections', async () => {
   const sections = JSON.parse(await callProvider('allanime', 'getHome', [{}]));
   assert.ok(Array.isArray(sections) && sections.length >= 1, 'expected sections');
