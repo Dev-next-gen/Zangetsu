@@ -28,7 +28,7 @@ create table public.profile_history (
   show_url text,
   category text,
   episode_id text,
-  episode_number integer,
+  episode_number double precision,
   episode_url text,
   position_ms bigint not null default 0,
   duration_ms bigint not null default 0,

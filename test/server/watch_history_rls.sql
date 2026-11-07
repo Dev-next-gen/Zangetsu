@@ -26,8 +26,16 @@ end;
 $$;
 
 insert into sync_api.profile_history
-  (user_key, profile_id, source_id, show_id, updated_at)
-values ('test-user-a', 'child', 'source', 'show', 100);
+  (user_key, profile_id, source_id, show_id, episode_number, updated_at)
+values ('test-user-a', 'child', 'source', 'show', 12.5, 100);
+
+do $$
+begin
+  if (select episode_number from sync_api.profile_history where show_id = 'show') <> 12.5 then
+    raise exception 'fractional profile episode number was lost';
+  end if;
+end;
+$$;
 
 select set_config('request.jwt.claims', '{"sub":"test-user-b"}', true);
 do $$
